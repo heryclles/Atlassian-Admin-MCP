@@ -76,6 +76,12 @@ class TestManifesto(unittest.TestCase):
         credencial e o /mcp mostra a falha com o motivo no log."""
         self.assertFalse(any(v.get("required") for v in MANIFESTO["userConfig"].values()))
 
+    def test_credenciais_com_default_vazio(self):
+        """O Cowork ignora servidor que referencia ${user_config.*} sem default (e nao
+        pergunta os valores). Com default vazio ele sobe e le o .env do usuario."""
+        for chave, opcao in MANIFESTO["userConfig"].items():
+            self.assertEqual(opcao.get("default"), "", chave)
+
     def test_ambiente_criado_pelo_uv_na_pasta_de_dados(self):
         """A copia instalada nao tem .venv: o uv monta o ambiente em ${CLAUDE_PLUGIN_DATA},
         que sobrevive a atualizacoes, a partir do uv.lock (--frozen)."""

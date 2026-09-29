@@ -1,7 +1,7 @@
 {
   "name": "atlassian-admin",
   "displayName": "Atlassian MCP for Admins",
-  "version": "0.4.4",
+  "version": "0.4.5",
   "description": "Ferramentas administrativas para Jira Cloud, Jira Service Management e Jira Forms (servidor MCP), com as skills que explicam os payloads de cada API.",
   "author": {
     "name": "Heryclles Henrique do Nascimento"
@@ -19,20 +19,23 @@
       "type": "string",
       "title": "URL do site Atlassian",
       "description": "Sem barra no final. Ex.: https://empresa.atlassian.net",
-      "required": false
+      "required": false,
+      "default": ""
     },
     "jira_email": {
       "type": "string",
       "title": "E-mail da conta administradora",
       "description": "Conta Atlassian dona do API token",
-      "required": false
+      "required": false,
+      "default": ""
     },
     "jira_token": {
       "type": "string",
       "title": "API token",
       "description": "Gerado em https://id.atlassian.com/manage-profile/security/api-tokens",
       "sensitive": true,
-      "required": false
+      "required": false,
+      "default": ""
     }
   },
   "mcpServers": {

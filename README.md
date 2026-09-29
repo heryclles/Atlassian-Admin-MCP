@@ -13,65 +13,68 @@ separadas:
 
 Requer o [uv](https://docs.astral.sh/uv/) no PATH (`uv --version`). A instalacao
 clona o repositorio por git: a copia instalada so tem arquivos do commit, nunca o
-`.env` nem a `.venv`. Nunca adicione a pasta do repositorio como marketplace: nesse
-modo o Claude Code copia a pasta inteira, com os arquivos fora do git.
-
-### Repositorio publicado (GitHub)
-
-O `.claude-plugin/marketplace.json` do repositorio serve de catalogo:
+`.env` nem a `.venv`. Instale sempre pelo repositorio publicado no GitHub, cujo
+`.claude-plugin/marketplace.json` serve de catalogo. Nunca adicione um clone local
+como marketplace: nesse modo o Claude Code copia a pasta inteira, com os arquivos
+fora do git.
 
 ```bash
 claude plugin marketplace add heryclles/Atlassian-Admin-MCP
 claude plugin install atlassian-admin@atlassian-admin
 ```
 
-### Clone local, sem remoto
-
-O `claude plugin marketplace add` nao aceita `file://`. Crie um catalogo pequeno
-fora do repositorio, cuja fonte do plugin e a URL git do clone:
-
-```bash
-M=~/.claude/marketplaces-locais/atlassian-admin-local
-mkdir -p "$M/.claude-plugin"
-cat > "$M/.claude-plugin/marketplace.json" <<JSON
-{
-  "name": "atlassian-admin-local",
-  "owner": { "name": "$(git config user.name)" },
-  "plugins": [
-    { "name": "atlassian-admin",
-      "source": { "source": "url", "url": "file://$HOME/project/atlassian-lab" } }
-  ]
-}
-JSON
-claude plugin marketplace add "$M"
-claude plugin install atlassian-admin@atlassian-admin-local
-```
-
 Na primeira sessao, o `uv` cria o ambiente Python do plugin na pasta de dados dele
-(`~/.claude/plugins/data/<plugin>-<marketplace>/venv`), a partir do `uv.lock`. Esse
+(`~/.claude/plugins/data/atlassian-admin-atlassian-admin/venv`), a partir do `uv.lock`. Esse
 ambiente sobrevive as atualizacoes.
 
 ## Credenciais
 
-O plugin exige tres opcoes: `jira_url`, `jira_email` e `jira_token` (este vai
-para o Keychain). Sem elas o servidor nao conecta: o `/mcp` mostra o conector
-`api` como falho, e o log dele diz o que falta e qual comando rodar. Preencha num
-terminal com o Claude Code, usando o nome do marketplace da instalacao, e depois
-reconecte o servidor pelo `/mcp` ou abra uma sessao nova:
+O servidor precisa da URL do site, do e-mail da conta administradora e de um
+[API token](https://id.atlassian.com/manage-profile/security/api-tokens). O metodo
+padrao, que funciona igual no Claude Code CLI e na aba Code do Claude Desktop, e um
+arquivo no seu usuario:
 
+```bash
+mkdir -p ~/.config/atlassian-admin
+cat > ~/.config/atlassian-admin/.env <<'ENV'
+JIRA_URL=https://empresa.atlassian.net
+JIRA_EMAIL=admin@empresa.com
+JIRA_TOKEN=cole-o-token-aqui
+ENV
+chmod 600 ~/.config/atlassian-admin/.env
 ```
-/plugin configure atlassian-admin@atlassian-admin-local
-```
+
+Troque os tres valores (URL sem barra no final) e abra uma sessao nova. O arquivo
+fica fora do repositorio e da copia instalada: nao vai para o git, vale para
+qualquer forma de instalacao e sobrevive as atualizacoes do plugin.
 
 Conferir: `claude mcp list` deve mostrar `plugin:atlassian-admin:api ... Connected`.
+Sem credencial o servidor nao sobe: o conector `api` aparece como falho, e o log
+dele diz o que falta e o caminho do arquivo. Credencial errada (token vencido) so
+aparece ao usar uma ferramenta; `atlassian_conexao` confere a conexao.
+
+A aba Chat do Claude (web e Desktop) nao roda servidor MCP local: la o plugin so
+carrega a skill. Veja a [tabela de componentes por app](https://claude.com/docs/plugins/platform-support).
+
+### Outras fontes
+
+O servidor usa o primeiro valor preenchido, nesta ordem. Na pratica, use so o
+arquivo acima; as outras existem para casos especificos:
+
+| Ordem | Fonte | Quando usar |
+|---|---|---|
+| 1 | Opcoes do plugin, via `/plugin configure atlassian-admin@atlassian-admin` (token no Keychain) | So no terminal do Claude Code; util para apontar uma instalacao para outro site, porque vence o arquivo |
+| 2 | `.env` na raiz do repositorio | Desenvolvimento e testes (secao [Desenvolver](#desenvolver)) |
+| 3 | `~/.config/atlassian-admin/.env` | **Padrao** |
 
 ## Atualizar
 
-Depois de um commit novo, com a versao de `.claude-plugin/plugin.json` aumentada:
+Depois de um commit publicado no GitHub, com a versao de `.claude-plugin/plugin.json`
+aumentada:
 
 ```bash
-claude plugin marketplace update <marketplace>
-claude plugin update atlassian-admin@<marketplace>
+claude plugin marketplace update atlassian-admin
+claude plugin update atlassian-admin@atlassian-admin
 ```
 
 A mudanca vale na proxima sessao.

@@ -2,4 +2,4 @@
 
 NOME = "atlassian-admin"
 TITULO = "Atlassian MCP for Admins"
-__version__ = "0.4.4"
+__version__ = "0.4.5"

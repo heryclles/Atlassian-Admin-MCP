@@ -91,37 +91,43 @@ modulo existente.
 
 ## Instalacao e credenciais
 
-- Plugin de marketplace, sempre instalado por git: o Claude Code clona e a copia
-  instalada so tem arquivos do commit. Duas formas (README):
-  - repositorio publicado (github.com/heryclles/Atlassian-Admin-MCP):
-    `claude plugin marketplace add heryclles/Atlassian-Admin-MCP`, usando o
-    `marketplace.json` da raiz (nome `atlassian-admin`, plugin com `source: "./"`);
-  - clone local: catalogo externo em `~/.claude/marketplaces-locais/...` com fonte
-    `{"source": "url", "url": "file://<repo>"}`. O `marketplace add` recusa `file://`
-    direto, e caminhos da maquina nao entram no repositorio.
+- Plugin de marketplace, sempre instalado pelo repositorio publicado
+  (github.com/heryclles/Atlassian-Admin-MCP): `claude plugin marketplace add
+  heryclles/Atlassian-Admin-MCP`, usando o `marketplace.json` da raiz (nome
+  `atlassian-admin`, plugin com `source: "./"`). O Claude Code clona e a copia
+  instalada so tem arquivos do commit, entao testar uma mudanca instalada exige
+  commit e push. Nao documentar instalacao por clone local.
 - Nunca adicionar a pasta do repositorio como marketplace: nesse modo o Claude Code
   copia a pasta inteira (inclusive `.env` e `.venv`, fora do git) e o `uninstall`
   nao apaga a copia. `test_segredos_e_ambiente_fora_do_git` garante que `.env` e
   `.venv` estao no `.gitignore`.
-- A copia instalada fica em `~/.claude/plugins/cache/<marketplace>/atlassian-admin/<versao>`
+- A copia instalada fica em `~/.claude/plugins/cache/atlassian-admin/atlassian-admin/<versao>`
   e nao tem `.venv`: o servidor sobe com `uv run --project ${CLAUDE_PLUGIN_ROOT}
   --frozen --quiet`, e o ambiente fica em `${CLAUDE_PLUGIN_DATA}/venv`, que
   sobrevive a atualizacoes. Por isso o `uv.lock` e versionado e o uv precisa estar
   no PATH. Primeira subida monta o ambiente (segundos); as seguintes reaproveitam.
-- Atualizar: commit, aumentar a versao do `plugin.json` (e do `pyproject.toml`),
-  `claude plugin marketplace update <marketplace>` e
-  `claude plugin update atlassian-admin@<marketplace>`. Vale na proxima sessao.
+- Atualizar: commit e push, aumentar a versao do `plugin.json` (e do `pyproject.toml`),
+  `claude plugin marketplace update atlassian-admin` e
+  `claude plugin update atlassian-admin@atlassian-admin`. Vale na proxima sessao.
 - Nao ha `.mcp.json` na raiz: ele viraria servidor de projeto e duplicaria o do plugin.
-- Credenciais: opcoes `jira_url`, `jira_email`, `jira_token` (sensitive, Keychain),
-  preenchidas pelo usuario em `/plugin configure atlassian-admin@<marketplace>` e
-  passadas ao servidor como JIRA_URL/JIRA_EMAIL/JIRA_TOKEN. Sao obrigatorias, mas a
-  obrigatoriedade fica no servidor: `servidor.main` valida na subida e encerra com
-  codigo 1, e o /mcp mostra o servidor como falho com o motivo e o comando exato no
-  log (`config.comando_configurar` deriva plugin e marketplace do CLAUDE_PLUGIN_ROOT).
-  No manifesto elas ficam `required: false`: com `required` e a opcao vazia, o
-  Claude Code nem tenta subir o servidor e o conector "api" aparece vazio, sem erro. Uma
-  configuracao por instalacao, ou seja, um site por usuario. Nunca passar o token
-  por `--config` na linha de comando nem digita-lo pelo usuario.
+- Credenciais: `config.py` le JIRA_URL/JIRA_EMAIL/JIRA_TOKEN e vale o primeiro valor
+  preenchido: (1) ambiente, que o Claude Code preenche com as opcoes `jira_url`,
+  `jira_email`, `jira_token` (sensitive, Keychain) do userConfig via
+  `/plugin configure atlassian-admin@atlassian-admin`, so no terminal; (2) `.env` da
+  raiz do repositorio (desenvolvimento ou clone carregado direto); (3)
+  `~/.config/atlassian-admin/.env` (`config.ARQUIVO_USUARIO`): o METODO PADRAO, o unico
+  que o README ensina primeiro, porque funciona igual no CLI e na aba Code do
+  Claude Desktop (que nao tem `/plugin configure`). Fica fora do repositorio e da
+  copia instalada e sobrevive a atualizacoes. As outras fontes sao casos especificos. userConfig vazio
+  chega como "" ou "${user_config.x}" e cai nos arquivos.
+  Obrigatorias, mas a obrigatoriedade fica no servidor: `servidor.main` valida na
+  subida e encerra com codigo 1, e o log mostra o caminho do arquivo padrao.
+  No manifesto elas ficam `required: false` e `default: ""`: com `required` e a
+  opcao vazia, o Claude Code nem tenta subir o servidor; sem `default`, o Cowork
+  ignora o servidor (ele nao pergunta userConfig). Um site por usuario da maquina.
+  Nunca passar o token por `--config` na linha de comando nem digita-lo pelo usuario.
+- Aba Chat do Claude (web e Desktop) ignora servidor MCP local: la so a skill
+  carrega. Tools no Chat exigiriam servidor remoto (http), fora do escopo atual.
 - Desenvolvimento: `uv sync` cria a `.venv` do repositorio; testes usam o `.env`
   da raiz (fallback do `config.py`), que nunca vai para o plugin instalado.
 

@@ -1,6 +1,6 @@
 {
   "name": "atlassian-admin",
-  "description": "Marketplace do plugin Atlassian MCP for Admins. Adicione por URL git (GitHub ou file://), nunca por pasta local.",
+  "description": "Marketplace do plugin Atlassian MCP for Admins. Adicione pelo repositorio no GitHub (heryclles/Atlassian-Admin-MCP), nunca por pasta local.",
   "owner": {
     "name": "Heryclles Henrique do Nascimento"
   },
