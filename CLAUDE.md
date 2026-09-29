@@ -202,6 +202,12 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   "oculto" (o campo sai do esquema ou fica restrito a tipos de issue) e as escritas
   em lote respondem 207 com results por item quando parte falha. Contexto do campo
   customizado (opcoes, valor padrao) e outra API.
+- Esquemas de notificacao: evento -> destinatarios (notificationType + parameter;
+  grupo grava pelo nome, EmailAddress nao funciona mais). Nao ha edicao de
+  notificacao (remover pelo id e adicionar) nem copia de esquema (ler e criar). O
+  projeto troca de esquema pelo PUT /project/{chave} so com notificationScheme.
+  Criar, renomear e excluir esquema e /events sao experimentais. Esquemas expandidos
+  sao grandes: listar sem expand por padrao (skill jira-notificacoes).
 - Status e workflows exigem admin do Jira. Usos paginam por nextPageToken
   aninhado. Workflow pode guardar o nome antigo de um status renomeado.
 - Forms API: erros vem como lista `errors: [{title, detail}]` (o `ErroAtlassian`
@@ -231,10 +237,13 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
 - v0.7: prioridades e esquemas de prioridade (ler, criar, editar,
   reordenar, excluir, mover projetos com mapeamento), tarefas assincronas,
   skill jira-prioridades.
-- v0.8 (atual): comportamento dos campos nas duas APIs: configuracoes e
+- v0.8: comportamento dos campos nas duas APIs: configuracoes e
   esquemas de configuracao de campo (antiga, skill jira-config-campos) e esquemas
   de campos (nova em beta, skill jira-esquemas-campos): obrigatorio, oculto,
   descricao, renderizador, por tipo de issue, associar a projeto.
+- v0.9 (atual): esquemas de notificacao (ler, criar, renomear, excluir,
+  adicionar e remover destinatarios, associar a projeto), eventos, papeis de
+  projeto, skill jira-notificacoes.
 - Proximos candidatos: contextos de campo customizado (opcoes, valor padrao),
   esquemas de tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
   issues, transicoes, filas e SLAs do JSM, Confluence. Cada um com a skill do seu

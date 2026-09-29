@@ -316,6 +316,41 @@ class TestConfigCampos(unittest.TestCase):
         self.assertEqual([ch[2]["startAt"] for ch in s.chamadas], [0, 2])
 
 
+class TestNotificacoes(unittest.TestCase):
+    def test_corpos_de_escrita(self):
+        c, s = cliente([Resposta({"id": "5"}), Resposta(None), Resposta(None), Resposta({"key": "SUP"})])
+        j = Jira(c)
+        eventos = [{"event": {"id": "1"}, "notifications": [{"notificationType": "Reporter"}]}]
+        j.criar_esquema_notif("N", eventos=eventos)
+        j.adicionar_notificacoes("5", eventos)
+        j.remover_notificacao("5", "77")
+        j.associar_esquema_notif("SUP", "5")
+        base = "https://site.atlassian.net/rest/api/3"
+        self.assertEqual([ch[:2] for ch in s.chamadas], [
+            ("POST", f"{base}/notificationscheme"), ("PUT", f"{base}/notificationscheme/5/notification"),
+            ("DELETE", f"{base}/notificationscheme/5/notification/77"), ("PUT", f"{base}/project/SUP")])
+        self.assertEqual([ch[3] for ch in s.chamadas], [
+            {"name": "N", "notificationSchemeEvents": eventos}, {"notificationSchemeEvents": eventos},
+            None, {"notificationScheme": 5}])
+
+    def test_leituras_expandem_por_padrao_so_no_obter(self):
+        c, s = cliente([Resposta({"values": []}), Resposta({"id": 1}), Resposta({"id": 1})])
+        j = Jira(c)
+        j.esquemas_notif_pagina(somente_padrao=True)
+        j.esquema_notif("10")
+        j.esquema_notif_projeto("SUP")
+        self.assertEqual(s.chamadas[0][2], {"startAt": 0, "maxResults": 50, "onlyDefault": "true"})
+        self.assertEqual([ch[2] for ch in s.chamadas[1:]], [{"expand": "all"}, {"expand": "all"}])
+        self.assertTrue(s.chamadas[2][1].endswith("/project/SUP/notificationscheme"))
+
+    def test_papeis_filtram_por_nome(self):
+        from atlassian_mcp_for_admins.ferramentas import jira as ferramentas
+        c, _ = cliente([Resposta([{"id": 1, "name": "Developers"}, {"id": 2, "name": "Service Desk Team"}])])
+        with mock.patch.object(ferramentas, "obter", return_value=mock.Mock(jira=Jira(c))):
+            r = ferramentas.jira_listar_papeis("desk")
+        self.assertEqual(r, {"total": 1, "papeis": [{"id": 2, "name": "Service Desk Team"}]})
+
+
 class TestEsquemasCampos(unittest.TestCase):
     def test_404_sem_corpo_explica_que_a_api_esta_desligada(self):
         """Com o beta desligado a API responde 404 vazio; o Claude precisa saber o motivo."""

@@ -164,6 +164,10 @@ class TestSkills(unittest.TestCase):
                                    "jira_listar_itens_config", "jira_listar_config_projetos",
                                    "jira_adicionar_itens_config", "jira_remover_itens_config",
                                    "jira_associar_esquema_config"),
+            "jira-notificacoes": ("jira_listar_esquemas_notif", "jira_obter_esquema_notif",
+                                  "jira_obter_notif_projeto", "jira_criar_esquema_notif",
+                                  "jira_adicionar_notificacoes", "jira_remover_notificacao",
+                                  "jira_associar_esquema_notif"),
             "jira-esquemas-campos": ("jira_listar_esquemas_campos", "jira_listar_campos_esquema",
                                      "jira_adicionar_campos_esquema", "jira_remover_campos_esquema",
                                      "jira_salvar_parametros_campos", "jira_remover_parametros_campos",
@@ -244,6 +248,23 @@ class TestSkills(unittest.TestCase):
         for m in mapeamento:
             self.assertEqual(set(m), {"issueTypeId", "fieldConfigurationId"})
             self.assertIsInstance(m["fieldConfigurationId"], str)
+
+    def test_exemplo_de_notificacoes_usa_so_chaves_da_api(self):
+        """Chaves de NotificationSchemeEventDetails e NotificationSchemeNotificationDetails."""
+        texto = (PASTA_SKILLS / "jira-notificacoes" / "SKILL.md").read_text(encoding="utf-8")
+        eventos = json.loads(texto.split("## Payloads")[1].split("```json")[1].split("```")[0])
+        sem_parametro = {"CurrentAssignee", "Reporter", "CurrentUser", "ProjectLead", "ComponentLead", "AllWatchers"}
+        com_parametro = {"User", "Group", "ProjectRole", "UserCustomField", "GroupCustomField"}
+        self.assertTrue(eventos)
+        for e in eventos:
+            self.assertEqual(set(e), {"event", "notifications"})
+            self.assertEqual(set(e["event"]), {"id"})
+            self.assertIsInstance(e["event"]["id"], str)
+            for n in e["notifications"]:
+                tipo = n["notificationType"]
+                self.assertIn(tipo, sem_parametro | com_parametro)
+                self.assertEqual(set(n), {"notificationType", "parameter"} if tipo in com_parametro
+                                 else {"notificationType"}, tipo)
 
     def test_exemplos_de_esquemas_de_campos_usam_so_chaves_da_api(self):
         """Chaves de UpdateFieldAssociationsRequestItem, RemoveFieldAssociationsRequestItem,

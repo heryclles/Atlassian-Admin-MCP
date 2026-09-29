@@ -235,6 +235,16 @@ def campos_da_configuracao():
     return {"total_itens": pagina["total"], "summary": r["values"][0]}
 
 
+def notificacoes_do_projeto():
+    """O esquema do projeto, os projetos que o usam e os eventos citados existem no site."""
+    esquema = jira.jira_obter_notif_projeto(ctx["projeto"])
+    usos = jira.jira_listar_notif_projetos(esquema_ids=[str(esquema["id"])], limite=100)
+    eventos = {e["id"] for e in jira.jira_listar_eventos()["eventos"]}
+    citados = {e["event"]["id"] for e in esquema.get("notificationSchemeEvents", [])}
+    assert citados <= eventos, f"eventos fora de /events: {citados - eventos}"
+    return {"esquema": esquema["id"], "eventos": len(citados), "projetos_no_esquema": usos["total"]}
+
+
 def esquema_de_campos_do_projeto():
     """API nova, em beta: pula se estiver desligada no site."""
     projeto_id = jira.jira_obter_projeto(ctx["projeto"])["id"]
@@ -315,6 +325,9 @@ CASOS = [
     ("jira_listar_esquemas_config", lambda: {"total": jira.jira_listar_esquemas_config(limite=5)["total"]}),
     ("cadeia de configuracao de campo", cadeia_de_configuracao_de_campo),
     ("jira_listar_campos_config", campos_da_configuracao),
+    ("jira_listar_esquemas_notif", lambda: {"total": jira.jira_listar_esquemas_notif(limite=5)["total"]}),
+    ("jira_obter_notif_projeto + usos", notificacoes_do_projeto),
+    ("jira_listar_papeis", lambda: {"total": jira.jira_listar_papeis()["total"]}),
     ("esquema de campos do projeto", esquema_de_campos_do_projeto),
     ("jira_listar_campos_esquema todos", campos_do_esquema_todos),
     ("jsm_listar_request_types", request_types),

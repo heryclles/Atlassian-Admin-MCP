@@ -486,6 +486,54 @@ class Jira:
         return self._esquemas_campos("PUT", "/projects",
                                      json={str(esquema_id): {"projectIds": _inteiros(projeto_ids)}})
 
+    # ------------------------------------------ esquemas de notificacao
+    def esquemas_notif_pagina(self, ids: Optional[List[str]] = None, projeto_ids: Optional[List[str]] = None,
+                              somente_padrao: bool = False, expand: Optional[str] = None,
+                              inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/notificationscheme", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, id=ids, projectId=projeto_ids,
+            onlyDefault="true" if somente_padrao else None, expand=expand))
+
+    def esquema_notif(self, esquema_id: str, expand: Optional[str] = "all") -> JSON:
+        return self.http.get(f"/rest/api/3/notificationscheme/{esquema_id}", params=_sem_vazios(expand=expand))
+
+    def esquema_notif_projeto(self, projeto: str, expand: Optional[str] = "all") -> JSON:
+        return self.http.get(f"/rest/api/3/project/{projeto}/notificationscheme", params=_sem_vazios(expand=expand))
+
+    def notif_projetos_pagina(self, esquema_ids: Optional[List[str]] = None,
+                              projeto_ids: Optional[List[str]] = None, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/notificationscheme/project", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, notificationSchemeId=esquema_ids, projectId=projeto_ids))
+
+    def criar_esquema_notif(self, nome: str, descricao: Optional[str] = None,
+                            eventos: Optional[List[dict]] = None) -> JSON:
+        return self.http.post("/rest/api/3/notificationscheme", json=_sem_vazios(
+            name=nome, description=descricao, notificationSchemeEvents=eventos))
+
+    def salvar_esquema_notif(self, esquema_id: str, nome: Optional[str] = None,
+                             descricao: Optional[str] = None) -> None:
+        self.http.put(f"/rest/api/3/notificationscheme/{esquema_id}", json=_sem_vazios(name=nome, description=descricao))
+
+    def excluir_esquema_notif(self, esquema_id: str) -> None:
+        self.http.delete(f"/rest/api/3/notificationscheme/{esquema_id}")
+
+    def adicionar_notificacoes(self, esquema_id: str, eventos: List[dict]) -> None:
+        self.http.put(f"/rest/api/3/notificationscheme/{esquema_id}/notification",
+                      json={"notificationSchemeEvents": eventos})
+
+    def remover_notificacao(self, esquema_id: str, notificacao_id: str) -> None:
+        self.http.delete(f"/rest/api/3/notificationscheme/{esquema_id}/notification/{notificacao_id}")
+
+    def associar_esquema_notif(self, projeto: str, esquema_id: str) -> JSON:
+        """Nao ha endpoint proprio: vai pelo cadastro do projeto, so com notificationScheme."""
+        return self.http.put(f"/rest/api/3/project/{projeto}", json={"notificationScheme": int(esquema_id)})
+
+    def eventos(self) -> List[JSON]:
+        return self.http.get("/rest/api/3/events")
+
+    def papeis(self) -> List[JSON]:
+        return self.http.get("/rest/api/3/role")
+
     # -------------------------------------------------------------- tarefas
     def tarefa(self, tarefa_id: str) -> JSON:
         return self.http.get(f"/rest/api/3/task/{tarefa_id}")

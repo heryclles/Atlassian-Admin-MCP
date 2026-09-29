@@ -1,6 +1,6 @@
 """Jira: issues, projetos, campos, status, workflows, telas, esquemas de tela, prioridades,
 esquemas de prioridade, configuracoes de campo e esquemas de configuracao de campo
-(API antiga) e esquemas de campos (API nova, em beta).
+(API antiga), esquemas de campos (API nova, em beta) e esquemas de notificacao.
 
 Telas e esquemas so existem em projetos company-managed (classicos) e exigem admin do Jira.
 """
@@ -13,6 +13,7 @@ SKILL_TELAS = "jira-telas"
 SKILL_PRIORIDADES = "jira-prioridades"
 SKILL_CONFIG = "jira-config-campos"
 SKILL_CAMPOS = "jira-esquemas-campos"
+SKILL_NOTIF = "jira-notificacoes"
 
 
 def _fatia(itens: list, inicio: int, limite: int, chave: str = "itens") -> dict:
@@ -940,6 +941,131 @@ def jira_associar_esquema_campos(esquema_id: str, projeto_ids: List[str]) -> dic
     return _resultado(obter().jira.associar_esquema_campos(esquema_id, projeto_ids), esquema_id=esquema_id)
 
 
+# --------------------------------------------- esquemas de notificacao
+@leitura
+@usa_skill(SKILL_NOTIF)
+def jira_listar_esquemas_notif(ids: Optional[List[str]] = None, projeto_ids: Optional[List[str]] = None,
+                               somente_padrao: bool = False, incluir_notificacoes: bool = False,
+                               inicio: int = 0, limite: int = 50) -> dict:
+    """Esquemas de notificacao (evento -> quem recebe e-mail), paginados, por nome.
+
+    projeto_ids: so os esquemas desses projetos. somente_padrao: so o esquema padrao do
+    site. incluir_notificacoes: traz eventos e destinatarios de cada esquema (use limite
+    pequeno, ex. 5). Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.esquemas_notif_pagina(
+        ids=ids, projeto_ids=projeto_ids, somente_padrao=somente_padrao,
+        expand="all" if incluir_notificacoes else None, inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@leitura
+@usa_skill(SKILL_NOTIF)
+def jira_obter_esquema_notif(esquema_id: str) -> dict:
+    """Um esquema de notificacao inteiro: cada evento com seus destinatarios (notificationType,
+    parameter, id da notificacao e o usuario, grupo, papel ou campo expandido)."""
+    return limpar(obter().jira.esquema_notif(esquema_id))
+
+
+@leitura
+@usa_skill(SKILL_NOTIF)
+def jira_obter_notif_projeto(projeto: str) -> dict:
+    """O esquema de notificacao de um projeto (chave ou id), com eventos e destinatarios.
+    Aceita admin do projeto, nao so do Jira."""
+    return limpar(obter().jira.esquema_notif_projeto(projeto))
+
+
+@leitura
+def jira_listar_notif_projetos(esquema_ids: Optional[List[str]] = None, projeto_ids: Optional[List[str]] = None,
+                               inicio: int = 0, limite: int = 50) -> dict:
+    """Pares projeto -> esquema de notificacao, paginados por projectId. esquema_ids: projetos
+    que usam esses esquemas. So projetos company-managed. Se isLast for false, chame de
+    novo com inicio = inicio + limite."""
+    return limpar(obter().jira.notif_projetos_pagina(esquema_ids, projeto_ids, inicio=max(0, inicio),
+                                                     limite=faixa(limite, 1, 100)))
+
+
+@leitura
+def jira_listar_eventos() -> dict:
+    """Eventos de issue do site (id e nome): os do sistema e os personalizados. O id vai em
+    event.id das notificacoes."""
+    itens = limpar(obter().jira.eventos())
+    return {"total": len(itens), "eventos": itens}
+
+
+@leitura
+def jira_listar_papeis(filtro: Optional[str] = None) -> dict:
+    """Papeis de projeto do site (id, nome, descricao, escopo). O id e o parameter de
+    destinatario ProjectRole. filtro: trecho do nome, sem diferenciar maiusculas."""
+    itens = limpar(obter().jira.papeis())
+    if filtro:
+        f = filtro.lower()
+        itens = [p for p in itens if f in (p.get("name") or "").lower()]
+    return {"total": len(itens), "papeis": itens}
+
+
+@escrita
+@usa_skill(SKILL_NOTIF)
+def jira_criar_esquema_notif(nome: str, descricao: Optional[str] = None,
+                             eventos: Optional[List[dict]] = None) -> dict:
+    """Cria um esquema de notificacao, ja com os destinatarios de cada evento (ate 1000).
+
+    eventos: [{"event": {"id": "1"}, "notifications": [{"notificationType": "Reporter"},
+    {"notificationType": "Group", "parameter": "nome-do-grupo"}]}]. Nasce sem projetos.
+    Devolve o id.
+    """
+    return limpar(obter().jira.criar_esquema_notif(nome, descricao, eventos))
+
+
+@escrita
+def jira_salvar_esquema_notif(esquema_id: str, nome: Optional[str] = None,
+                              descricao: Optional[str] = None) -> dict:
+    """Renomeia ou troca a descricao de um esquema de notificacao. Destinatarios:
+    jira_adicionar_notificacoes e jira_remover_notificacao."""
+    if nome is None and descricao is None:
+        raise ValueError("Informe nome ou descricao.")
+    obter().jira.salvar_esquema_notif(esquema_id, nome, descricao)
+    return {"salvo": esquema_id}
+
+
+@escrita
+def jira_excluir_esquema_notif(esquema_id: str) -> dict:
+    """Exclui um esquema de notificacao. Exclua so esquema sem projetos
+    (jira_listar_notif_projetos). Nao ha como desfazer."""
+    obter().jira.excluir_esquema_notif(esquema_id)
+    return {"excluido": esquema_id}
+
+
+@escrita
+@usa_skill(SKILL_NOTIF)
+def jira_adicionar_notificacoes(esquema_id: str, eventos: List[dict]) -> dict:
+    """Acrescenta destinatarios a eventos de um esquema de notificacao (ate 1000). Os que ja
+    existem continuam; muda o e-mail de todos os projetos do esquema.
+
+    eventos: [{"event": {"id": "6"}, "notifications": [{"notificationType": "ProjectRole",
+    "parameter": "10002"}]}].
+    """
+    obter().jira.adicionar_notificacoes(esquema_id, eventos)
+    return {"esquema_id": esquema_id, "adicionados": eventos}
+
+
+@escrita
+@usa_skill(SKILL_NOTIF)
+def jira_remover_notificacao(esquema_id: str, notificacao_id: str) -> dict:
+    """Tira um destinatario de um evento, pelo id da notificacao (jira_obter_esquema_notif).
+    Nao ha edicao: para trocar, remova e adicione."""
+    obter().jira.remover_notificacao(esquema_id, notificacao_id)
+    return {"esquema_id": esquema_id, "removida": notificacao_id}
+
+
+@escrita
+@usa_skill(SKILL_NOTIF)
+def jira_associar_esquema_notif(projeto: str, esquema_id: str) -> dict:
+    """Troca o esquema de notificacao de um projeto company-managed (chave ou id). Vai pelo
+    cadastro do projeto, so com notificationScheme; o resto do projeto nao muda."""
+    r = obter().jira.associar_esquema_notif(projeto, esquema_id)
+    return {"projeto": (r or {}).get("key", projeto), "esquema_id": esquema_id}
+
+
 # --------------------------------------------------------------- tarefas
 @leitura
 def jira_obter_tarefa(tarefa_id: str) -> dict:
@@ -977,4 +1103,8 @@ FERRAMENTAS = [jira_buscar_issues, jira_contar_issues, jira_obter_issue, jira_li
                jira_usos_esquema_campos, jira_criar_esquema_campos, jira_copiar_esquema_campos,
                jira_salvar_esquema_campos, jira_excluir_esquema_campos, jira_adicionar_campos_esquema,
                jira_remover_campos_esquema, jira_salvar_parametros_campos, jira_remover_parametros_campos,
-               jira_associar_esquema_campos]
+               jira_associar_esquema_campos,
+               jira_listar_esquemas_notif, jira_obter_esquema_notif, jira_obter_notif_projeto,
+               jira_listar_notif_projetos, jira_listar_eventos, jira_listar_papeis, jira_criar_esquema_notif,
+               jira_salvar_esquema_notif, jira_excluir_esquema_notif, jira_adicionar_notificacoes,
+               jira_remover_notificacao, jira_associar_esquema_notif]
