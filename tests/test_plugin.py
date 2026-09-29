@@ -1,6 +1,8 @@
 """Amarra plugin, servidor e skills: um nao pode existir sem o outro. Sem rede."""
 import json
 import re
+
+OBJETO_ASSETS = re.compile(r"^[0-9a-f-]{36}:\d+$")
 import unittest
 from pathlib import Path
 
@@ -52,6 +54,9 @@ def conferir_design(d: dict) -> list:
             q = d["questions"].get(qid)
             if not q:
                 erros.append(f"condicao {cid} usa pergunta inexistente {qid}")
+            elif q["type"] == "ob":
+                if not all(OBJETO_ASSETS.match(o) for o in opcoes):
+                    erros.append(f"condicao {cid} usa objeto do Assets fora do formato workspaceId:objectId")
             elif not q.get("jiraField") and not set(opcoes) <= {o["id"] for o in q.get("choices", [])}:
                 erros.append(f"condicao {cid} usa opcao inexistente da pergunta {qid}")
     return erros
@@ -154,11 +159,18 @@ class TestSkills(unittest.TestCase):
                 self.assertIn(skill, getattr(por_nome[nome], "skills", ()), nome)
                 self.assertIn(f"{PLUGIN}:{skill}", por_nome[nome].__doc__)
 
-    def test_exemplo_da_skill_passa_na_conferencia(self):
+    def test_exemplos_da_skill_passam_na_conferencia(self):
         texto = (PASTA_SKILLS / "forms-design" / "SKILL.md").read_text(encoding="utf-8")
-        exemplo = texto.split("## Exemplo minimo")[1].split("```json")[1].split("```")[0]
-        design = json.loads(exemplo)
-        self.assertEqual(conferir_design(design), [])
+        for titulo in ("## Exemplo minimo", "## Exemplo: aviso condicional"):
+            exemplo = texto.split(titulo)[1].split("```json")[1].split("```")[0]
+            self.assertEqual(conferir_design(json.loads(exemplo)), [], titulo)
+
+    def test_conferencia_pega_condicao_orfa(self):
+        """Pergunta que mudou de tipo deixa condicao apontando para opcao que nao existe."""
+        texto = (PASTA_SKILLS / "forms-design" / "SKILL.md").read_text(encoding="utf-8")
+        design = json.loads(texto.split("## Exemplo: aviso condicional")[1].split("```json")[1].split("```")[0])
+        design["questions"]["1"] = {"type": "tl", "label": "Sistema afetado", "validation": {"rq": True}}
+        self.assertTrue(any("opcao inexistente" in e for e in conferir_design(design)))
 
     def test_exemplo_de_respostas_usa_so_chaves_da_api(self):
         """Chaves de FormAnswerRequest na especificacao da Forms API."""

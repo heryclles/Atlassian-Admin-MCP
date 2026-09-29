@@ -1,6 +1,6 @@
 [project]
 name = "atlassian-mcp-for-admins"
-version = "0.5.0"
+version = "0.5.1"
 description = "Atlassian MCP for Admins: ferramentas administrativas para Jira Cloud, JSM e Jira Forms"
 readme = "README.md"
 requires-python = ">=3.10"

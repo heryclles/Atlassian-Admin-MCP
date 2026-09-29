@@ -116,5 +116,5 @@ para outro host.
 
 | Skill | Ferramentas | Conteudo |
 |---|---|---|
-| `atlassian-admin:forms-design` | `forms_obter`, `forms_obter_do_request_type`, `forms_obter_da_issue`, `forms_criar`, `forms_salvar` | tipos de pergunta, validacao, opcoes, campos do Jira e conexoes de dados, secoes, condicoes, layout, publicacao, traducao, fluxo seguro de edicao |
+| `atlassian-admin:forms-design` | `forms_obter`, `forms_obter_do_request_type`, `forms_obter_da_issue`, `forms_criar`, `forms_salvar` | tipos de pergunta, validacao, opcoes, campos do Jira, Assets e conexoes de dados, secoes, condicoes, layout (avisos, titulos, colunas, aviso condicional), publicacao, traducao, fluxo seguro de edicao |
 | `atlassian-admin:forms-respostas` | `forms_obter_da_issue`, `forms_salvar_respostas`, `forms_obter_dados_externos`, `forms_obter_dados_externos_rt` | resposta por tipo de pergunta, status e visibilidade, preencher e enviar, dados externos, rotulos de conexao de dados |
