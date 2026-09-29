@@ -105,7 +105,8 @@ No Claude Code aparecem como `mcp__plugin_atlassian-admin_api__<nome>`.
 | Geral | `atlassian_conexao`, `atlassian_get` | `atlassian_requisicao` |
 | Jira | `jira_buscar_issues`, `jira_contar_issues`, `jira_obter_issue`, `jira_listar_comentarios`, `jira_listar_projetos`, `jira_obter_projeto`, `jira_listar_campos`, `jira_listar_status`, `jira_usos_status`, `jira_listar_workflows`, `jira_usos_workflow` | |
 | JSM | `jsm_listar_service_desks`, `jsm_listar_request_types`, `jsm_obter_request_type`, `jsm_listar_campos_request_type`, `jsm_listar_grupos_request_type` | `jsm_criar_request_type`, `jsm_excluir_request_type` |
-| Forms | `forms_listar`, `forms_obter`, `forms_obter_do_request_type`, `forms_listar_da_issue`, `forms_obter_respostas` | `forms_criar`, `forms_salvar`, `forms_excluir` |
+| Forms (templates) | `forms_listar`, `forms_obter`, `forms_obter_do_request_type`, `forms_obter_dados_externos_rt` | `forms_criar`, `forms_salvar`, `forms_excluir` |
+| Forms (na issue) | `forms_listar_da_issue`, `forms_obter_da_issue`, `forms_obter_respostas`, `forms_obter_dados_externos`, `forms_listar_anexos` | `forms_criar_na_issue`, `forms_salvar_respostas`, `forms_enviar`, `forms_reabrir`, `forms_salvar_visibilidade`, `forms_copiar_entre_issues`, `forms_excluir_da_issue` |
 
 `atlassian_get` e `atlassian_requisicao` cobrem qualquer endpoint sem ferramenta
 propria. So aceitam o site configurado e `api.atlassian.com`: o token nunca vai
@@ -115,4 +116,5 @@ para outro host.
 
 | Skill | Ferramentas | Conteudo |
 |---|---|---|
-| `atlassian-admin:forms-design` | `forms_obter`, `forms_obter_do_request_type`, `forms_criar`, `forms_salvar` | tipos de pergunta, validacao, opcoes, secoes, condicoes, layout, publicacao, fluxo seguro de edicao |
+| `atlassian-admin:forms-design` | `forms_obter`, `forms_obter_do_request_type`, `forms_obter_da_issue`, `forms_criar`, `forms_salvar` | tipos de pergunta, validacao, opcoes, campos do Jira e conexoes de dados, secoes, condicoes, layout, publicacao, traducao, fluxo seguro de edicao |
+| `atlassian-admin:forms-respostas` | `forms_obter_da_issue`, `forms_salvar_respostas`, `forms_obter_dados_externos`, `forms_obter_dados_externos_rt` | resposta por tipo de pergunta, status e visibilidade, preencher e enviar, dados externos, rotulos de conexao de dados |

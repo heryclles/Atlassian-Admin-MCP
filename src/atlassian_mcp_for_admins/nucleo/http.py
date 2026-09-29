@@ -29,7 +29,12 @@ class ErroAtlassian(Exception):
     def _extrair_mensagem(corpo: Any) -> str:
         if isinstance(corpo, dict):
             partes = list(corpo.get("errorMessages") or [])
-            partes += [f"{k}: {v}" for k, v in (corpo.get("errors") or {}).items()]
+            erros = corpo.get("errors") or {}
+            if isinstance(erros, dict):
+                partes += [f"{k}: {v}" for k, v in erros.items()]
+            else:  # Forms API: [{"status", "code", "title", "detail", "context"}]
+                partes += [": ".join(str(e[c]) for c in ("title", "detail") if e.get(c)) if isinstance(e, dict)
+                           else str(e) for e in erros]
             for chave in ("errorMessage", "message", "detail"):
                 if corpo.get(chave):
                     partes.append(str(corpo[chave]))

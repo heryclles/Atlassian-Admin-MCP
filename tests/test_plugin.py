@@ -132,7 +132,7 @@ class TestIndependenteDeSite(unittest.TestCase):
 
 class TestSkills(unittest.TestCase):
     def test_toda_skill_citada_existe(self):
-        citadas = {f.skill for f in todas() if getattr(f, "skill", None)}
+        citadas = {s for f in todas() for s in getattr(f, "skills", ())}
         self.assertTrue(citadas, "nenhuma ferramenta cita skill")
         for skill in citadas:
             arquivo = PASTA_SKILLS / skill / "SKILL.md"
@@ -141,17 +141,35 @@ class TestSkills(unittest.TestCase):
             self.assertEqual(meta["name"].strip(), skill)
             self.assertGreater(len(meta["description"].strip()), 80)
 
-    def test_ferramentas_com_payload_de_design_citam_a_skill(self):
+    def test_ferramentas_com_payload_complexo_citam_a_skill(self):
         por_nome = {f.__name__: f for f in todas()}
-        for nome in ("forms_criar", "forms_salvar", "forms_obter", "forms_obter_do_request_type"):
-            self.assertEqual(getattr(por_nome[nome], "skill", None), "forms-design", nome)
-            self.assertIn(f"{PLUGIN}:forms-design", por_nome[nome].__doc__)
+        esperado = {
+            "forms-design": ("forms_criar", "forms_salvar", "forms_obter", "forms_obter_do_request_type",
+                             "forms_obter_da_issue"),
+            "forms-respostas": ("forms_salvar_respostas", "forms_obter_da_issue", "forms_obter_dados_externos",
+                                "forms_obter_dados_externos_rt"),
+        }
+        for skill, nomes in esperado.items():
+            for nome in nomes:
+                self.assertIn(skill, getattr(por_nome[nome], "skills", ()), nome)
+                self.assertIn(f"{PLUGIN}:{skill}", por_nome[nome].__doc__)
 
     def test_exemplo_da_skill_passa_na_conferencia(self):
         texto = (PASTA_SKILLS / "forms-design" / "SKILL.md").read_text(encoding="utf-8")
         exemplo = texto.split("## Exemplo minimo")[1].split("```json")[1].split("```")[0]
         design = json.loads(exemplo)
         self.assertEqual(conferir_design(design), [])
+
+    def test_exemplo_de_respostas_usa_so_chaves_da_api(self):
+        """Chaves de FormAnswerRequest na especificacao da Forms API."""
+        texto = (PASTA_SKILLS / "forms-respostas" / "SKILL.md").read_text(encoding="utf-8")
+        exemplo = texto.split("## Preencher e enviar")[1].split("```json")[1].split("```")[0]
+        respostas = json.loads(exemplo)
+        self.assertTrue(respostas)
+        for qid, resposta in respostas.items():
+            self.assertTrue(qid.isdigit(), qid)
+            self.assertLessEqual(set(resposta), {"adf", "choices", "date", "files", "text", "time", "users"}, qid)
+            self.assertTrue(all(isinstance(u, str) for u in resposta.get("users", [])), "users grava accountIds")
 
 
 if __name__ == "__main__":

@@ -137,6 +137,45 @@ class TestErros(unittest.TestCase):
         self.assertEqual(ctx.exception.status, 400)
         self.assertIn("JQL invalida", str(ctx.exception))
 
+    def test_erro_legivel_da_forms_api(self):
+        """A Forms API devolve errors como lista de objetos, nao como mapa."""
+        corpo = {"errors": [{"status": 422, "code": "INVALID_ANSWERS", "title": "Respostas invalidas",
+                             "detail": "Pergunta 2 obrigatoria"}]}
+        c, _ = cliente([Resposta(corpo, 422)])
+        with self.assertRaises(ErroAtlassian) as ctx:
+            c.put("/x")
+        self.assertIn("Respostas invalidas: Pergunta 2 obrigatoria", str(ctx.exception))
+
+
+class TestFormsNaIssue(unittest.TestCase):
+    def forms(self, respostas):
+        from atlassian_mcp_for_admins.apis.forms import Forms
+        c, s = cliente([Resposta({"cloudId": "CID"})] + respostas)
+        return Forms(c), s
+
+    def test_acoes_usam_put_sem_corpo(self):
+        f, s = self.forms([Resposta({"status": "submitted"})])
+        f.acao("SUP-1", "F1", "submit")
+        self.assertEqual(s.chamadas[1][:2], ("PUT", "https://api.atlassian.com/jira/forms/cloud/CID/issue/SUP-1/form/F1/action/submit"))
+        self.assertIsNone(s.chamadas[1][3])
+
+    def test_corpos_de_escrita(self):
+        f, s = self.forms([Resposta({"id": "N"}), Resposta({}), Resposta({"copiedForms": [], "errors": []}),
+                           Resposta({"copiedForms": [], "errors": []})])
+        f.anexar("SUP-1", "T1")
+        f.salvar_respostas("SUP-1", "F1", {"1": {"text": "x"}})
+        f.copiar("SUP-1", "SUP-2", ["F1"])
+        f.copiar("SUP-1", "SUP-2")
+        corpos = [ch[3] for ch in s.chamadas[1:]]
+        self.assertEqual(corpos, [{"formTemplate": {"id": "T1"}}, {"answers": {"1": {"text": "x"}}}, {"ids": ["F1"]}, {}])
+        self.assertTrue(s.chamadas[3][1].endswith("/issue/SUP-1/form/copy/SUP-2"))
+
+    def test_idioma_vira_request_language(self):
+        f, s = self.forms([Resposta({"design": {}}), Resposta({"design": {}})])
+        f.template("SUP", "F1", "en-US")
+        f.template("SUP", "F1")
+        self.assertEqual([ch[2] for ch in s.chamadas[1:]], [{"requestLanguage": "en-US"}, {}])
+
 
 if __name__ == "__main__":
     unittest.main()

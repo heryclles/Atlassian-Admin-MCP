@@ -30,7 +30,7 @@ Claude le para decidir quando usar cada ferramenta.
 .claude-plugin/
   plugin.json         manifesto: userConfig (credenciais), servidor MCP "api", skills
   marketplace.json    marketplace "atlassian-admin" com o proprio repo como plugin
-skills/<skill>/SKILL.md   uma skill por payload complexo, ex. forms-design
+skills/<skill>/SKILL.md   uma skill por payload complexo, ex. forms-design, forms-respostas
 src/atlassian_mcp_for_admins/
   config.py           credenciais: env do plugin (userConfig) e, se vazio, .env; sem projeto fixo
   nucleo/http.py      ClienteHttp: auth, retry 429/5xx, erros legiveis, paginacoes,
@@ -51,7 +51,8 @@ Cada produto (API) da Atlassian usa o mesmo nome em tres lugares:
 - `apis/<produto>.py`: classe com os metodos HTTP, exposta em `obter()` como `at.<produto>`.
 - `ferramentas/<produto>.py`: as ferramentas MCP daquele produto.
 - Nome da ferramenta: `<produto>_<verbo>_<objeto>`, ex. `jsm_criar_request_type`.
-  Verbos: listar, obter, buscar, contar, criar, salvar, excluir, usos.
+  Verbos: listar, obter, buscar, contar, criar, salvar, excluir, usos, copiar,
+  e os de acao da API: enviar (submit), reabrir (reopen).
 
 Como decidir o produto: pela API que serve o endpoint (a URL base), nunca pelo
 assunto. Exemplos: o formulario de um request type vem da Forms API, entao fica em
@@ -174,6 +175,12 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
 - Busca de issues: POST /rest/api/3/search/jql (nextPageToken); o GET /search saiu.
 - Status e workflows exigem admin do Jira. Usos paginam por nextPageToken
   aninhado. Workflow pode guardar o nome antigo de um status renomeado.
+- Forms API: erros vem como lista `errors: [{title, detail}]` (o `ErroAtlassian`
+  le os dois formatos). `serviceDeskId` aceita a chave do projeto. PDF, XLSX e a
+  exportacao devolvem arquivo, entao ficam sem ferramenta (nao ha arquivo de
+  saida); os endpoints /request/... repetem os de issue com a visao do cliente.
+- Rotulos de opcao vindos de conexao de dados (`dcId`) sao texto externo sem
+  limpeza: ferramenta que os devolve avisa na docstring para tratar como dado.
 - Request types: API so cria (nome, descricao, ajuda, issue type) e exclui; nao
   edita. Grupo do portal, campos e icone sao manuais. Formulario liga ao portal
   pelo `publish.portal.portalRequestTypeIds` do template (Forms API).
@@ -184,8 +191,11 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
 - v0.2: ferramentas abstratas de Jira, JSM e Forms e chamadas genericas.
 - v0.3: plugin do Claude Code (servidor + skills), credenciais pelo userConfig,
   skill forms-design.
-- v0.4 (atual): plugin de marketplace instalado por git, ambiente criado pelo uv na
+- v0.4: plugin de marketplace instalado por git, ambiente criado pelo uv na
   pasta de dados do plugin, erros previstos repassados ao Claude com o motivo.
+- v0.5 (atual): Forms API completa para JSON (formularios na issue: preencher,
+  enviar, reabrir, visibilidade, copiar, dados externos, anexos), skill
+  forms-respostas, erros da Forms API legiveis.
 - Proximos candidatos: Assets (objetos, esquemas, AQL), criacao e edicao de
   issues, transicoes, filas e SLAs do JSM, Confluence. Cada um com a skill do seu
   payload quando precisar (ex. assets-aql).

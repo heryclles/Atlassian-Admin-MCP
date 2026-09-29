@@ -1,7 +1,7 @@
 {
   "name": "atlassian-admin",
   "displayName": "Atlassian MCP for Admins",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Ferramentas administrativas para Jira Cloud, Jira Service Management e Jira Forms (servidor MCP), com as skills que explicam os payloads de cada API.",
   "author": {
     "name": "Heryclles Henrique do Nascimento"

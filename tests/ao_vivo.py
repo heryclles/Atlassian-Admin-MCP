@@ -49,7 +49,7 @@ def paginar_tudo():
         token = r["proximo_token"]
         if not token or len(chaves) >= 500:
             break
-    ctx["issue"] = chaves[0]
+    ctx["issue"], ctx["issues"] = chaves[0], chaves[:40]
     assert len(chaves) == len(set(chaves)), "chave repetida entre paginas"
     if not token:
         assert len(chaves) == total, f"coletado {len(chaves)} x contagem {total}"
@@ -98,6 +98,25 @@ def formulario():
     return {k: len(d.get(k) or {}) for k in ("questions", "sections", "conditions")}
 
 
+def formulario_de_issue():
+    """Acha uma issue com formulario entre as coletadas e le o formulario inteiro."""
+    for chave in ctx["issues"]:
+        itens = forms.forms_listar_da_issue(chave)["formularios"]
+        if itens:
+            ctx["issue_form"], ctx["form_issue"] = chave, itens[0]["id"]
+            f = forms.forms_obter_da_issue(chave, itens[0]["id"])
+            return {"issue": chave, "status": f["state"]["status"], "respostas": len(f["state"]["answers"])}
+    raise Pular("nenhuma das issues coletadas tem formulario")
+
+
+def na_issue(ferramenta):
+    def chamar():
+        if "form_issue" not in ctx:
+            raise Pular("sem formulario em issue")
+        return ferramenta(ctx["issue_form"], ctx["form_issue"])
+    return chamar
+
+
 def host_recusado():
     try:
         geral.atlassian_get("https://evil.example.com/rest/api/3/myself")
@@ -129,7 +148,14 @@ CASOS = [
     ("forms_listar", formularios),
     ("forms_obter", formulario),
     ("forms_obter_do_request_type", lambda: forms.forms_obter_do_request_type(ctx["projeto"], ctx["rt"])),
+    ("forms_obter_dados_externos_rt", lambda: {"perguntas": len(
+        forms.forms_obter_dados_externos_rt(ctx["projeto"], ctx["rt"])["fields"])}),
     ("forms_listar_da_issue", lambda: forms.forms_listar_da_issue(ctx["issue"])),
+    ("forms_obter_da_issue", formulario_de_issue),
+    ("forms_obter_respostas", na_issue(lambda c, f: {"total": forms.forms_obter_respostas(c, f)["total"]})),
+    ("forms_obter_dados_externos", na_issue(lambda c, f: {"perguntas": len(
+        forms.forms_obter_dados_externos(c, f)["fields"])})),
+    ("forms_listar_anexos", na_issue(lambda c, f: {"perguntas": len(forms.forms_listar_anexos(c, f)["fields"])})),
 ]
 
 falhas = pulados = 0

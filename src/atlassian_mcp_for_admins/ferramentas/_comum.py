@@ -20,16 +20,19 @@ def escrita(f: Callable) -> Callable:
 PLUGIN = "atlassian-admin"
 
 
-def usa_skill(skill: str) -> Callable:
-    """Liga a ferramenta a uma skill do plugin que explica o payload da API.
+def usa_skill(*skills: str) -> Callable:
+    """Liga a ferramenta a skills do plugin que explicam o payload da API.
 
-    Acrescenta a descricao da ferramenta a instrucao de carregar a skill antes de
-    usar e registra o vinculo (`f.skill`), que os testes conferem contra skills/.
+    Acrescenta a descricao da ferramenta a instrucao de carregar as skills antes de
+    usar e registra o vinculo (`f.skills`), que os testes conferem contra skills/.
     """
     def decorar(f: Callable) -> Callable:
-        f.skill = skill
-        aviso = (f"\n\nAntes de montar ou interpretar o payload, carregue a skill "
-                 f"{PLUGIN}:{skill}: ela explica a estrutura que a API exige.")
+        f.skills = skills
+        nomes = " e ".join(f"{PLUGIN}:{s}" for s in skills)
+        aviso = (f"\n\nAntes de montar ou interpretar o payload, carregue a skill {nomes}: "
+                 f"ela explica a estrutura que a API exige." if len(skills) == 1 else
+                 f"\n\nAntes de montar ou interpretar o payload, carregue as skills {nomes}: "
+                 f"elas explicam a estrutura que a API exige.")
         f.__doc__ = (f.__doc__ or "").rstrip() + aviso
         return f
     return decorar
