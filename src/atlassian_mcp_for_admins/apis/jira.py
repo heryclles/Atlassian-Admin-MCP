@@ -273,3 +273,103 @@ class Jira:
     def associar_esquema_tipo_tela(self, esquema_id: str, projeto_id: str) -> None:
         self.http.put("/rest/api/3/issuetypescreenscheme/project",
                       json={"issueTypeScreenSchemeId": esquema_id, "projectId": projeto_id})
+
+    # --------------------------------------------------------- prioridades
+    def prioridades_pagina(self, ids: Optional[List[str]] = None, projeto_ids: Optional[List[str]] = None,
+                           filtro: Optional[str] = None, expand: Optional[str] = None,
+                           inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/priority/search", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, id=ids, projectId=projeto_ids, priorityName=filtro, expand=expand))
+
+    def criar_prioridade(self, nome: str, cor: str, avatar_id: int, descricao: Optional[str] = None) -> JSON:
+        return self.http.post("/rest/api/3/priority", json=_sem_vazios(
+            name=nome, statusColor=cor, avatarId=avatar_id, description=descricao))
+
+    def salvar_prioridade(self, prioridade_id: str, nome: Optional[str] = None, cor: Optional[str] = None,
+                          avatar_id: Optional[int] = None, descricao: Optional[str] = None) -> None:
+        self.http.put(f"/rest/api/3/priority/{prioridade_id}", json=_sem_vazios(
+            name=nome, statusColor=cor, avatarId=avatar_id, description=descricao))
+
+    def excluir_prioridade(self, prioridade_id: str) -> Optional[JSON]:
+        """Assincrono: a API responde 303 para a tarefa, que o requests segue com GET."""
+        return self.http.delete(f"/rest/api/3/priority/{prioridade_id}")
+
+    def mover_prioridades(self, ids: List[str], depois_de: Optional[str] = None,
+                          posicao: Optional[str] = None) -> None:
+        self.http.put("/rest/api/3/priority/move", json=_sem_vazios(ids=ids, after=depois_de, position=posicao))
+
+    def salvar_padrao_prioridade(self, prioridade_id: Optional[str]) -> None:
+        self.http.put("/rest/api/3/priority/default", json={"id": prioridade_id})
+
+    # ------------------------------------------- esquemas de prioridade
+    def esquemas_prioridade_pagina(self, filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                                   prioridade_ids: Optional[List[str]] = None, somente_padrao: bool = False,
+                                   expand: Optional[str] = None, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/priorityscheme", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, schemeName=filtro, schemeId=ids, priorityId=prioridade_ids,
+            onlyDefault="true" if somente_padrao else None, expand=expand))
+
+    def prioridades_esquema_pagina(self, esquema_id: str, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get(f"/rest/api/3/priorityscheme/{esquema_id}/priorities",
+                             params={"startAt": inicio, "maxResults": limite})
+
+    def projetos_esquema_prioridade_pagina(self, esquema_id: str, filtro: Optional[str] = None,
+                                           projeto_ids: Optional[List[str]] = None,
+                                           inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get(f"/rest/api/3/priorityscheme/{esquema_id}/projects", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, query=filtro, projectId=projeto_ids))
+
+    def prioridades_mapear_pagina(self, esquema_id: str, adicionar_prioridades: Optional[List[str]] = None,
+                                  remover_prioridades: Optional[List[str]] = None,
+                                  adicionar_projetos: Optional[List[str]] = None,
+                                  inicio: int = 0, limite: int = 50) -> JSON:
+        """POST sem efeito: so calcula quais prioridades a mudanca exigiria mapear."""
+        return self.http.post("/rest/api/3/priorityscheme/mappings", json=_sem_vazios(
+            schemeId=int(esquema_id), startAt=inicio, maxResults=limite,
+            priorities=_sem_vazios(add=_inteiros(adicionar_prioridades),
+                                   remove=_inteiros(remover_prioridades)) or None,
+            projects=_sem_vazios(add=_inteiros(adicionar_projetos)) or None))
+
+    def criar_esquema_prioridade(self, nome: str, prioridade_ids: List[str], prioridade_padrao_id: str,
+                                 descricao: Optional[str] = None, projeto_ids: Optional[List[str]] = None,
+                                 mapeamentos: Optional[dict] = None) -> JSON:
+        return self.http.post("/rest/api/3/priorityscheme", json=_sem_vazios(
+            name=nome, description=descricao, priorityIds=_inteiros(prioridade_ids),
+            defaultPriorityId=int(prioridade_padrao_id), projectIds=_inteiros(projeto_ids),
+            mappings=_mapeamentos(mapeamentos)))
+
+    def salvar_esquema_prioridade(self, esquema_id: str, nome: Optional[str] = None,
+                                  descricao: Optional[str] = None, prioridade_padrao_id: Optional[str] = None,
+                                  adicionar_prioridades: Optional[List[str]] = None,
+                                  remover_prioridades: Optional[List[str]] = None,
+                                  adicionar_projetos: Optional[List[str]] = None,
+                                  remover_projetos: Optional[List[str]] = None,
+                                  mapeamentos: Optional[dict] = None) -> JSON:
+        def mudanca(adicionar, remover):
+            return _sem_vazios(add={"ids": _inteiros(adicionar)} if adicionar else None,
+                               remove={"ids": _inteiros(remover)} if remover else None) or None
+        return self.http.put(f"/rest/api/3/priorityscheme/{esquema_id}", json=_sem_vazios(
+            name=nome, description=descricao,
+            defaultPriorityId=int(prioridade_padrao_id) if prioridade_padrao_id else None,
+            priorities=mudanca(adicionar_prioridades, remover_prioridades),
+            projects=mudanca(adicionar_projetos, remover_projetos),
+            mappings=_mapeamentos(mapeamentos)))
+
+    def excluir_esquema_prioridade(self, esquema_id: str) -> None:
+        self.http.delete(f"/rest/api/3/priorityscheme/{esquema_id}")
+
+    # -------------------------------------------------------------- tarefas
+    def tarefa(self, tarefa_id: str) -> JSON:
+        return self.http.get(f"/rest/api/3/task/{tarefa_id}")
+
+
+def _inteiros(ids: Optional[Iterable]) -> Optional[List[int]]:
+    """Ids de prioridade, projeto e esquema viram inteiros (int64) no corpo."""
+    return [int(i) for i in ids] if ids else None
+
+
+def _mapeamentos(mapeamentos: Optional[dict]) -> Optional[dict]:
+    """{"in": {antiga: nova}, "out": {antiga: nova}}: chave texto, valor inteiro."""
+    if not mapeamentos:
+        return None
+    return {lado: {str(k): int(v) for k, v in (pares or {}).items()} for lado, pares in mapeamentos.items()}

@@ -169,6 +169,48 @@ def na_tela(ferramenta):
     return chamar
 
 
+def prioridades_todas():
+    """Percorre as paginas de jira_listar_prioridades e confere com o total."""
+    inicio, ids = 0, []
+    while True:
+        r = jira.jira_listar_prioridades(inicio=inicio, limite=10)
+        ids += [p["id"] for p in r["values"]]
+        if r.get("isLast") or not r["values"]:
+            break
+        inicio += len(r["values"])
+    assert len(ids) == len(set(ids)) == r["total"], f"{len(ids)} x total {r['total']}"
+    ctx["prioridade"] = ids[0]
+    return {"percorridas": len(ids)}
+
+
+def esquema_padrao_de_prioridade():
+    r = jira.jira_listar_esquemas_prioridade(somente_padrao=True, incluir_prioridades=True)
+    assert r["total"] == 1 and r["values"][0]["isDefault"], "esperado um unico esquema padrao"
+    esquema = r["values"][0]
+    ctx["esquema_prioridade"] = esquema["id"]
+    ids = [p["id"] for p in esquema["priorities"]["values"]]
+    assert esquema["defaultPriorityId"] in ids, "padrao fora das prioridades do esquema"
+    return {"esquema": esquema["id"], "prioridades": len(ids)}
+
+
+def prioridades_do_esquema():
+    if "esquema_prioridade" not in ctx:
+        raise Pular("sem esquema de prioridade descoberto")
+    r = jira.jira_listar_prioridades_esquema(ctx["esquema_prioridade"])
+    sequencias = [int(p["sequence"]) for p in r["values"]]
+    assert sequencias == sorted(sequencias), "prioridades fora da ordem global"
+    return {"total": r["total"]}
+
+
+def sugestao_de_mapeamento():
+    """So calcula: remover a ultima prioridade do esquema padrao exige mapear a propria."""
+    if "esquema_prioridade" not in ctx:
+        raise Pular("sem esquema de prioridade descoberto")
+    ultima = jira.jira_listar_prioridades_esquema(ctx["esquema_prioridade"])["values"][-1]["id"]
+    r = jira.jira_listar_prioridades_mapear(ctx["esquema_prioridade"], remover_prioridades=[ultima])
+    return {"removida": ultima, "a_mapear": [p["id"] for p in r["values"]]}
+
+
 def host_recusado():
     try:
         geral.atlassian_get("https://evil.example.com/rest/api/3/myself")
@@ -205,6 +247,15 @@ CASOS = [
     ("jira_usos_campo", usos_campo),
     ("jira_usos_esquema_tipo_tela", lambda: {"projetos": jira.jira_usos_esquema_tipo_tela(ctx["itss"])["total"]}
      if "itss" in ctx else (_ for _ in ()).throw(Pular("sem esquema descoberto"))),
+    ("jira_listar_prioridades todas", prioridades_todas),
+    ("jira_listar_prioridades esquemas", lambda: {"esquemas": jira.jira_listar_prioridades(
+        ids=[ctx["prioridade"]], incluir_esquemas=True)["values"][0]["schemes"]["total"]}),
+    ("jira_listar_esquemas_prioridade", lambda: {"total": jira.jira_listar_esquemas_prioridade(limite=5)["total"]}),
+    ("esquema de prioridade padrao", esquema_padrao_de_prioridade),
+    ("jira_listar_prioridades_esquema", prioridades_do_esquema),
+    ("jira_usos_esquema_prioridade", lambda: {"projetos": jira.jira_usos_esquema_prioridade(
+        ctx["esquema_prioridade"], limite=5)["total"]}),
+    ("jira_listar_prioridades_mapear", sugestao_de_mapeamento),
     ("jsm_listar_request_types", request_types),
     ("jsm_obter_request_type", lambda: jsm.jsm_obter_request_type(ctx["projeto"], ctx["rt"])),
     ("jsm_listar_campos_request_type", lambda: jsm.jsm_listar_campos_request_type(ctx["projeto"], ctx["rt"])),

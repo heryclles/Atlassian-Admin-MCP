@@ -1,4 +1,5 @@
-"""Jira: issues, projetos, campos, status, workflows, telas e esquemas de tela.
+"""Jira: issues, projetos, campos, status, workflows, telas, esquemas de tela, prioridades
+e esquemas de prioridade.
 
 Telas e esquemas so existem em projetos company-managed (classicos) e exigem admin do Jira.
 """
@@ -8,6 +9,7 @@ from ..apis import obter
 from ._comum import escrita, faixa, leitura, limpar, usa_skill
 
 SKILL_TELAS = "jira-telas"
+SKILL_PRIORIDADES = "jira-prioridades"
 
 
 def _fatia(itens: list, inicio: int, limite: int, chave: str = "itens") -> dict:
@@ -445,6 +447,201 @@ def jira_associar_esquema_tipo_tela(esquema_id: str, projeto_id: str) -> dict:
     return {"projeto_id": projeto_id, "esquema_id": esquema_id}
 
 
+# ----------------------------------------------------------- prioridades
+@leitura
+def jira_listar_prioridades(filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                            projeto_ids: Optional[List[str]] = None, incluir_esquemas: bool = False,
+                            inicio: int = 0, limite: int = 50) -> dict:
+    """Prioridades do site na ordem global (a primeira e a mais alta), paginadas.
+
+    filtro: trecho do nome, sem diferenciar maiusculas. projeto_ids: so as disponiveis
+    nesses projetos (ids numericos). incluir_esquemas: traz os esquemas de prioridade de
+    cada uma (ate 15). avatarId e o icone, reaproveitavel em jira_criar_prioridade.
+    Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.prioridades_pagina(
+        ids=ids, projeto_ids=projeto_ids, filtro=filtro, expand="schemes" if incluir_esquemas else None,
+        inicio=max(0, inicio), limite=faixa(limite, 1, 200)))
+
+
+@escrita
+@usa_skill(SKILL_PRIORIDADES)
+def jira_criar_prioridade(nome: str, cor: str, avatar_id: int, descricao: Optional[str] = None) -> dict:
+    """Cria uma prioridade no fim da ordem global. Ela nao entra em nenhum esquema sozinha.
+
+    nome: unico, ate 60 caracteres. cor: hexadecimal de 3 ou 6 digitos ("#ff0000").
+    avatar_id: icone, ex. o avatarId de uma prioridade existente. Devolve o id.
+    """
+    return limpar(obter().jira.criar_prioridade(nome, cor, avatar_id, descricao))
+
+
+@escrita
+def jira_salvar_prioridade(prioridade_id: str, nome: Optional[str] = None, cor: Optional[str] = None,
+                           avatar_id: Optional[int] = None, descricao: Optional[str] = None) -> dict:
+    """Altera nome, cor (hexadecimal), icone (avatar_id) ou descricao de uma prioridade.
+
+    A prioridade e global: a mudanca aparece em todos os esquemas e issues que a usam.
+    """
+    if nome is None and cor is None and avatar_id is None and descricao is None:
+        raise ValueError("Informe nome, cor, avatar_id ou descricao.")
+    obter().jira.salvar_prioridade(prioridade_id, nome, cor, avatar_id, descricao)
+    return {"salva": prioridade_id}
+
+
+@escrita
+@usa_skill(SKILL_PRIORIDADES)
+def jira_excluir_prioridade(prioridade_id: str) -> dict:
+    """Exclui uma prioridade do site. Assincrono: devolve a tarefa, que se acompanha em
+    jira_obter_tarefa. A API recusa (409) se ja houver exclusao em andamento. Nao ha
+    como desfazer."""
+    tarefa = obter().jira.excluir_prioridade(prioridade_id)
+    return {"excluida": prioridade_id, "tarefa": limpar(tarefa)}
+
+
+@escrita
+def jira_mover_prioridades(ids: List[str], depois_de: Optional[str] = None,
+                           posicao: Optional[Literal["First", "Last"]] = None) -> dict:
+    """Muda a ordem global das prioridades (a ordem de exibicao e de ordenacao por prioridade).
+
+    ids: prioridades a mover, na ordem em que devem ficar. Informe depois_de (id da
+    prioridade apos a qual elas ficam, fora de ids) ou posicao (First ou Last).
+    """
+    if not depois_de and not posicao:
+        raise ValueError("Informe depois_de ou posicao.")
+    obter().jira.mover_prioridades(ids, depois_de, posicao)
+    return {"movidas": ids, "depois_de": depois_de, "posicao": None if depois_de else posicao}
+
+
+@escrita
+def jira_salvar_padrao_prioridade(prioridade_id: Optional[str] = None) -> dict:
+    """Troca a prioridade padrao global do site; sem prioridade_id, apaga a configuracao.
+
+    O padrao que vale num projeto e o defaultPriorityId do esquema de prioridade dele
+    (jira_salvar_esquema_prioridade). A Atlassian marcou o isDefault global como obsoleto.
+    """
+    obter().jira.salvar_padrao_prioridade(prioridade_id)
+    return {"padrao": prioridade_id}
+
+
+# --------------------------------------------- esquemas de prioridade
+@leitura
+@usa_skill(SKILL_PRIORIDADES)
+def jira_listar_esquemas_prioridade(filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                                    prioridade_ids: Optional[List[str]] = None, somente_padrao: bool = False,
+                                    incluir_prioridades: bool = False, incluir_projetos: bool = False,
+                                    inicio: int = 0, limite: int = 50) -> dict:
+    """Esquemas de prioridade, paginados, com defaultPriorityId (padrao do esquema).
+
+    filtro: trecho do nome. prioridade_ids: so esquemas que tem essas prioridades.
+    somente_padrao: so o esquema padrao do site (isDefault true), o dos projetos sem
+    esquema proprio; o nome nao indica qual e.
+    incluir_prioridades / incluir_projetos: traz a primeira pagina de cada lista (com
+    total); o resto sai em jira_listar_prioridades_esquema e jira_usos_esquema_prioridade.
+    Com incluir_*, use limite pequeno (ex. 10): cada esquema pode trazer 50 projetos.
+    Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    expand = ",".join(n for n, sim in (("priorities", incluir_prioridades), ("projects", incluir_projetos)) if sim)
+    return limpar(obter().jira.esquemas_prioridade_pagina(
+        filtro=filtro, ids=ids, prioridade_ids=prioridade_ids, somente_padrao=somente_padrao,
+        expand=expand or None, inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@leitura
+def jira_listar_prioridades_esquema(esquema_id: str, inicio: int = 0, limite: int = 100) -> dict:
+    """Prioridades de um esquema de prioridade, na ordem global (sequence), paginadas.
+
+    Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.prioridades_esquema_pagina(esquema_id, inicio=max(0, inicio),
+                                                          limite=faixa(limite, 1, 200)))
+
+
+@leitura
+def jira_usos_esquema_prioridade(esquema_id: str, filtro: Optional[str] = None,
+                                 projeto_ids: Optional[List[str]] = None, inicio: int = 0,
+                                 limite: int = 50) -> dict:
+    """Projetos que usam um esquema de prioridade, paginados.
+
+    filtro: trecho do nome do projeto. projeto_ids: confere se esses projetos (ids
+    numericos) estao no esquema. Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.projetos_esquema_prioridade_pagina(
+        esquema_id, filtro=filtro, projeto_ids=projeto_ids, inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@leitura
+@usa_skill(SKILL_PRIORIDADES)
+def jira_listar_prioridades_mapear(esquema_id: str, adicionar_prioridades: Optional[List[str]] = None,
+                                   remover_prioridades: Optional[List[str]] = None,
+                                   adicionar_projetos: Optional[List[str]] = None,
+                                   inicio: int = 0, limite: int = 50) -> dict:
+    """Prioridades que uma mudanca no esquema exigiria mapear (chaves do mapeamento "in").
+
+    Nao altera nada: a API so calcula. Informe as mesmas listas que irao para
+    jira_salvar_esquema_prioridade. Nao cobre remocao de projetos (mapeamento "out").
+    Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.prioridades_mapear_pagina(
+        esquema_id, adicionar_prioridades, remover_prioridades, adicionar_projetos,
+        inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@escrita
+@usa_skill(SKILL_PRIORIDADES)
+def jira_criar_esquema_prioridade(nome: str, prioridade_ids: List[str], prioridade_padrao_id: str,
+                                  descricao: Optional[str] = None, projeto_ids: Optional[List[str]] = None,
+                                  mapeamentos: Optional[dict] = None) -> dict:
+    """Cria um esquema de prioridade e, se vierem projeto_ids, ja o associa a eles.
+
+    prioridade_padrao_id deve estar em prioridade_ids. Projetos cujas issues usam
+    prioridades fora do esquema exigem mapeamentos {"in": {"<antiga>": <nova>}}.
+    Devolve o id e, se houver migracao de issues, a tarefa (jira_obter_tarefa).
+    """
+    return limpar(obter().jira.criar_esquema_prioridade(nome, prioridade_ids, prioridade_padrao_id, descricao,
+                                                        projeto_ids, mapeamentos))
+
+
+@escrita
+@usa_skill(SKILL_PRIORIDADES)
+def jira_salvar_esquema_prioridade(esquema_id: str, nome: Optional[str] = None, descricao: Optional[str] = None,
+                                   prioridade_padrao_id: Optional[str] = None,
+                                   adicionar_prioridades: Optional[List[str]] = None,
+                                   remover_prioridades: Optional[List[str]] = None,
+                                   adicionar_projetos: Optional[List[str]] = None,
+                                   remover_projetos: Optional[List[str]] = None,
+                                   mapeamentos: Optional[dict] = None) -> dict:
+    """Altera um esquema de prioridade: nome, descricao, padrao, prioridades e projetos.
+
+    Adicionar um projeto o tira do esquema anterior; remover o devolve ao esquema
+    padrao do site. Remover prioridades ou adicionar projetos exige mapeamentos "in";
+    remover projetos exige "out". Devolve o esquema e a tarefa de migracao de issues
+    (jira_obter_tarefa).
+    """
+    if all(v is None or v == [] for v in (nome, descricao, prioridade_padrao_id, adicionar_prioridades,
+                                          remover_prioridades, adicionar_projetos, remover_projetos)):
+        raise ValueError("Informe ao menos uma alteracao.")
+    return limpar(obter().jira.salvar_esquema_prioridade(
+        esquema_id, nome, descricao, prioridade_padrao_id, adicionar_prioridades, remover_prioridades,
+        adicionar_projetos, remover_projetos, mapeamentos))
+
+
+@escrita
+def jira_excluir_esquema_prioridade(esquema_id: str) -> dict:
+    """Exclui um esquema de prioridade. A API recusa se algum projeto o usar: tire os
+    projetos antes (jira_salvar_esquema_prioridade). As prioridades nao sao excluidas."""
+    obter().jira.excluir_esquema_prioridade(esquema_id)
+    return {"excluido": esquema_id}
+
+
+# --------------------------------------------------------------- tarefas
+@leitura
+def jira_obter_tarefa(tarefa_id: str) -> dict:
+    """Situacao de uma tarefa assincrona do Jira (exclusao de prioridade, migracao de
+    issues de esquema): status ENQUEUED, RUNNING, COMPLETE, FAILED, CANCELLED ou DEAD,
+    progress (%) e result. A Atlassian guarda a tarefa por cerca de 14 dias."""
+    return limpar(obter().jira.tarefa(tarefa_id))
+
+
 FERRAMENTAS = [jira_buscar_issues, jira_contar_issues, jira_obter_issue, jira_listar_comentarios,
                jira_listar_projetos, jira_obter_projeto, jira_listar_campos,
                jira_listar_status, jira_usos_status, jira_listar_workflows, jira_usos_workflow,
@@ -458,4 +655,9 @@ FERRAMENTAS = [jira_buscar_issues, jira_contar_issues, jira_obter_issue, jira_li
                jira_listar_esquemas_tipo_tela, jira_listar_itens_tipo_tela, jira_listar_tipo_tela_projetos,
                jira_usos_esquema_tipo_tela, jira_criar_esquema_tipo_tela, jira_salvar_esquema_tipo_tela,
                jira_excluir_esquema_tipo_tela, jira_adicionar_itens_tipo_tela, jira_salvar_padrao_tipo_tela,
-               jira_remover_itens_tipo_tela, jira_associar_esquema_tipo_tela]
+               jira_remover_itens_tipo_tela, jira_associar_esquema_tipo_tela,
+               jira_listar_prioridades, jira_criar_prioridade, jira_salvar_prioridade, jira_excluir_prioridade,
+               jira_mover_prioridades, jira_salvar_padrao_prioridade,
+               jira_listar_esquemas_prioridade, jira_listar_prioridades_esquema, jira_usos_esquema_prioridade,
+               jira_listar_prioridades_mapear, jira_criar_esquema_prioridade, jira_salvar_esquema_prioridade,
+               jira_excluir_esquema_prioridade, jira_obter_tarefa]

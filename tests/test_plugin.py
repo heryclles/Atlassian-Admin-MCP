@@ -156,6 +156,9 @@ class TestSkills(unittest.TestCase):
             "jira-telas": ("jira_criar_esquema_tela", "jira_salvar_esquema_tela", "jira_listar_esquemas_tela",
                            "jira_criar_esquema_tipo_tela", "jira_adicionar_itens_tipo_tela",
                            "jira_listar_itens_tipo_tela", "jira_mover_campo_aba"),
+            "jira-prioridades": ("jira_criar_prioridade", "jira_excluir_prioridade",
+                                 "jira_listar_esquemas_prioridade", "jira_listar_prioridades_mapear",
+                                 "jira_criar_esquema_prioridade", "jira_salvar_esquema_prioridade"),
         }
         for skill, nomes in esperado.items():
             for nome in nomes:
@@ -200,6 +203,19 @@ class TestSkills(unittest.TestCase):
             self.assertIn("default", [i["issueTypeId"] for i in lista])
             for i in lista:
                 self.assertEqual(set(i), {"issueTypeId", "screenSchemeId"})
+
+    def test_mapeamentos_de_prioridade_no_formato_da_api(self):
+        """PriorityMapping: so in/out, chave = id da prioridade antiga em texto, valor = id inteiro."""
+        texto = (PASTA_SKILLS / "jira-prioridades" / "SKILL.md").read_text(encoding="utf-8")
+        blocos = [json.loads(b.split("```")[0]) for b in texto.split("```json")[1:]]
+        self.assertGreaterEqual(len(blocos), 2)
+        for b in blocos:
+            self.assertLessEqual(set(b), {"in", "out"})
+            for pares in b.values():
+                self.assertTrue(pares)
+                for antiga, nova in pares.items():
+                    self.assertTrue(antiga.isdigit(), antiga)
+                    self.assertIsInstance(nova, int)
 
 
 if __name__ == "__main__":

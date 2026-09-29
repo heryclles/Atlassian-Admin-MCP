@@ -233,5 +233,50 @@ class TestTelas(unittest.TestCase):
             Jira(c).tela("999")
 
 
+class TestPrioridades(unittest.TestCase):
+    def test_corpos_de_prioridade(self):
+        c, s = cliente([Resposta({"id": "10"}), Resposta(None), Resposta(None), Resposta(None)])
+        j = Jira(c)
+        j.criar_prioridade("P1", "#fff", 11920)
+        j.salvar_prioridade("10", cor="#000")
+        j.mover_prioridades(["10", "11"], posicao="First")
+        j.salvar_padrao_prioridade(None)
+        self.assertEqual([ch[:2] for ch in s.chamadas][1:], [
+            ("PUT", "https://site.atlassian.net/rest/api/3/priority/10"),
+            ("PUT", "https://site.atlassian.net/rest/api/3/priority/move"),
+            ("PUT", "https://site.atlassian.net/rest/api/3/priority/default")])
+        self.assertEqual([ch[3] for ch in s.chamadas], [
+            {"name": "P1", "statusColor": "#fff", "avatarId": 11920}, {"statusColor": "#000"},
+            {"ids": ["10", "11"], "position": "First"}, {"id": None}])
+
+    def test_esquema_manda_ids_inteiros_e_mapeamentos(self):
+        """A API quer int64 nos ids e chave texto / valor inteiro nos mapeamentos."""
+        c, s = cliente([Resposta({"id": "5"}), Resposta({"task": {}})])
+        j = Jira(c)
+        j.criar_esquema_prioridade("E", ["1", "2"], "2", projeto_ids=["100"], mapeamentos={"in": {3: "1"}})
+        j.salvar_esquema_prioridade("5", remover_prioridades=["2"], adicionar_projetos=["101"],
+                                    mapeamentos={"in": {"2": "1"}, "out": {}})
+        self.assertEqual(s.chamadas[0][3], {"name": "E", "priorityIds": [1, 2], "defaultPriorityId": 2,
+                                            "projectIds": [100], "mappings": {"in": {"3": 1}}})
+        self.assertEqual(s.chamadas[1][3], {"priorities": {"remove": {"ids": [2]}},
+                                            "projects": {"add": {"ids": [101]}},
+                                            "mappings": {"in": {"2": 1}, "out": {}}})
+
+    def test_sugestao_de_mapeamento_sem_blocos_vazios(self):
+        c, s = cliente([Resposta({"values": []}), Resposta({"values": []})])
+        j = Jira(c)
+        j.prioridades_mapear_pagina("5", remover_prioridades=["2"])
+        j.esquemas_prioridade_pagina(somente_padrao=True, expand="priorities")
+        self.assertEqual(s.chamadas[0][3], {"schemeId": 5, "startAt": 0, "maxResults": 50,
+                                            "priorities": {"remove": [2]}})
+        self.assertEqual(s.chamadas[1][2], {"startAt": 0, "maxResults": 50, "onlyDefault": "true",
+                                            "expand": "priorities"})
+
+    def test_salvar_esquema_sem_alteracao_e_recusado(self):
+        from atlassian_mcp_for_admins.ferramentas import jira as ferramentas
+        with self.assertRaises(ValueError):
+            ferramentas.jira_salvar_esquema_prioridade("5", mapeamentos={"in": {"1": 2}})
+
+
 if __name__ == "__main__":
     unittest.main()

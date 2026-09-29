@@ -183,6 +183,14 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   jira-telas). Campos da aba e availableFields vem inteiros, sem paginacao, e a aba
   pode repetir o mesmo campo em sequencia: as ferramentas entregam em partes
   (inicio/proximo_inicio). /field/{id}/screens so aceita campo customizado.
+- Prioridades sao globais, com uma ordem unica; o esquema de prioridade so escolhe
+  quais entram e o padrao (defaultPriorityId). Ids vao como inteiro no corpo e os
+  mapeamentos como {"in"|"out": {"<antiga>": <nova>}}. O esquema padrao do site se
+  acha por onlyDefault=true (isDefault), nunca pelo nome. Alterar esquema e excluir
+  prioridade sao assincronos: devolvem tarefa (/rest/api/3/task, jira_obter_tarefa);
+  o DELETE de prioridade responde 303 e o requests segue ate a tarefa. POST
+  /priorityscheme/mappings so calcula, mas conta como POST. iconUrl foi descontinuado:
+  icone e avatarId (skill jira-prioridades).
 - Status e workflows exigem admin do Jira. Usos paginam por nextPageToken
   aninhado. Workflow pode guardar o nome antigo de um status renomeado.
 - Forms API: erros vem como lista `errors: [{title, detail}]` (o `ErroAtlassian`
@@ -206,9 +214,12 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
 - v0.5: Forms API completa para JSON (formularios na issue: preencher,
   enviar, reabrir, visibilidade, copiar, dados externos, anexos), skill
   forms-respostas, erros da Forms API legiveis.
-- v0.6 (atual): telas, abas, campos da aba, esquemas de tela e esquemas de tela
+- v0.6: telas, abas, campos da aba, esquemas de tela e esquemas de tela
   por tipo de issue (ler, criar, editar, excluir, associar a projeto), tipos de
   issue, skill jira-telas, verbos adicionar/remover/mover/associar.
+- v0.7 (atual): prioridades e esquemas de prioridade (ler, criar, editar,
+  reordenar, excluir, mover projetos com mapeamento), tarefas assincronas,
+  skill jira-prioridades.
 - Proximos candidatos: configuracoes de campo (obrigatorio/oculto) e esquemas de
   tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
   issues, transicoes, filas e SLAs do JSM, Confluence. Cada um com a skill do seu
