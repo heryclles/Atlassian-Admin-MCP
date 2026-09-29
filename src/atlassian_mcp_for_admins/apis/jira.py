@@ -4,6 +4,11 @@ from typing import Iterable, Iterator, List, Optional, Union
 from ..nucleo.http import JSON, ClienteHttp
 
 
+def _sem_vazios(**kw) -> dict:
+    """Parametros e corpos so com o que foi informado (0 e False ficam)."""
+    return {k: v for k, v in kw.items() if v is not None and v != "" and v != []}
+
+
 class Jira:
     def __init__(self, http: ClienteHttp):
         self.http = http
@@ -137,3 +142,134 @@ class Jira:
     def workflow_esquemas(self, workflow_id: str) -> List[str]:
         return [e["id"] for e in self.http.paginar_token_aninhado(
             f"/rest/api/3/workflow/{workflow_id}/workflowSchemes", "workflowSchemes")]
+
+    # ------------------------------------------------------ tipos de issue
+    def tipos_issue(self, projeto_id: Optional[str] = None) -> List[JSON]:
+        if projeto_id:
+            return self.http.get("/rest/api/3/issuetype/project", params={"projectId": projeto_id})
+        return self.http.get("/rest/api/3/issuetype")
+
+    # --------------------------------------------------------------- telas
+    def telas_pagina(self, filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                     escopos: Optional[List[str]] = None, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/screens", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, queryString=filtro, id=ids, scope=escopos))
+
+    def tela(self, tela_id: str) -> JSON:
+        valores = self.telas_pagina(ids=[tela_id], limite=1).get("values") or []
+        if not valores:
+            raise LookupError(f"Tela {tela_id} nao encontrada")
+        return valores[0]
+
+    def criar_tela(self, nome: str, descricao: Optional[str] = None) -> JSON:
+        return self.http.post("/rest/api/3/screens", json=_sem_vazios(name=nome, description=descricao))
+
+    def salvar_tela(self, tela_id: str, nome: Optional[str] = None, descricao: Optional[str] = None) -> JSON:
+        return self.http.put(f"/rest/api/3/screens/{tela_id}", json=_sem_vazios(name=nome, description=descricao))
+
+    def excluir_tela(self, tela_id: str) -> None:
+        self.http.delete(f"/rest/api/3/screens/{tela_id}")
+
+    def campos_disponiveis_tela(self, tela_id: str) -> List[JSON]:
+        return self.http.get(f"/rest/api/3/screens/{tela_id}/availableFields")
+
+    def telas_do_campo(self, campo_id: str, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get(f"/rest/api/3/field/{campo_id}/screens",
+                             params={"startAt": inicio, "maxResults": limite, "expand": "tab"})
+
+    # ---------------------------------------------------------------- abas
+    def abas(self, tela_id: str, projeto: Optional[str] = None) -> List[JSON]:
+        return self.http.get(f"/rest/api/3/screens/{tela_id}/tabs", params=_sem_vazios(projectKey=projeto))
+
+    def criar_aba(self, tela_id: str, nome: str) -> JSON:
+        return self.http.post(f"/rest/api/3/screens/{tela_id}/tabs", json={"name": nome})
+
+    def salvar_aba(self, tela_id: str, aba_id: str, nome: str) -> JSON:
+        return self.http.put(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}", json={"name": nome})
+
+    def excluir_aba(self, tela_id: str, aba_id: str) -> None:
+        self.http.delete(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}")
+
+    def mover_aba(self, tela_id: str, aba_id: str, posicao: int) -> None:
+        self.http.post(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}/move/{posicao}")
+
+    # ------------------------------------------------------ campos da aba
+    def campos_aba(self, tela_id: str, aba_id: str, projeto: Optional[str] = None) -> List[JSON]:
+        return self.http.get(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}/fields",
+                             params=_sem_vazios(projectKey=projeto))
+
+    def adicionar_campo_aba(self, tela_id: str, aba_id: str, campo_id: str) -> JSON:
+        return self.http.post(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}/fields", json={"fieldId": campo_id})
+
+    def remover_campo_aba(self, tela_id: str, aba_id: str, campo_id: str) -> None:
+        self.http.delete(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}/fields/{campo_id}")
+
+    def mover_campo_aba(self, tela_id: str, aba_id: str, campo_id: str,
+                        depois_de: Optional[str] = None, posicao: Optional[str] = None) -> None:
+        self.http.post(f"/rest/api/3/screens/{tela_id}/tabs/{aba_id}/fields/{campo_id}/move",
+                       json=_sem_vazios(after=depois_de, position=posicao))
+
+    # ---------------------------------------------------- esquemas de tela
+    def esquemas_tela_pagina(self, filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                             expand: Optional[str] = None, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/screenscheme", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, queryString=filtro, id=ids, expand=expand))
+
+    def criar_esquema_tela(self, nome: str, telas: dict, descricao: Optional[str] = None) -> JSON:
+        return self.http.post("/rest/api/3/screenscheme",
+                              json=_sem_vazios(name=nome, description=descricao, screens=telas))
+
+    def salvar_esquema_tela(self, esquema_id: str, nome: Optional[str] = None, descricao: Optional[str] = None,
+                            telas: Optional[dict] = None) -> None:
+        self.http.put(f"/rest/api/3/screenscheme/{esquema_id}",
+                      json=_sem_vazios(name=nome, description=descricao, screens=telas))
+
+    def excluir_esquema_tela(self, esquema_id: str) -> None:
+        self.http.delete(f"/rest/api/3/screenscheme/{esquema_id}")
+
+    # ------------------------- esquemas de tela por tipo de issue (itss)
+    def esquemas_tipo_tela_pagina(self, filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                                  expand: Optional[str] = None, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/issuetypescreenscheme", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, queryString=filtro, id=ids, expand=expand))
+
+    def itens_tipo_tela_pagina(self, esquema_ids: Optional[List[str]] = None,
+                               inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/issuetypescreenscheme/mapping", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, issueTypeScreenSchemeId=esquema_ids))
+
+    def tipo_tela_projetos_pagina(self, projeto_ids: List[str], inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/issuetypescreenscheme/project",
+                             params={"startAt": inicio, "maxResults": limite, "projectId": projeto_ids})
+
+    def projetos_esquema_tipo_tela_pagina(self, esquema_id: str, filtro: Optional[str] = None,
+                                          inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get(f"/rest/api/3/issuetypescreenscheme/{esquema_id}/project",
+                             params=_sem_vazios(startAt=inicio, maxResults=limite, query=filtro))
+
+    def criar_esquema_tipo_tela(self, nome: str, itens: List[dict], descricao: Optional[str] = None) -> JSON:
+        return self.http.post("/rest/api/3/issuetypescreenscheme",
+                              json=_sem_vazios(name=nome, description=descricao, issueTypeMappings=itens))
+
+    def salvar_esquema_tipo_tela(self, esquema_id: str, nome: Optional[str] = None,
+                                 descricao: Optional[str] = None) -> None:
+        self.http.put(f"/rest/api/3/issuetypescreenscheme/{esquema_id}",
+                      json=_sem_vazios(name=nome, description=descricao))
+
+    def excluir_esquema_tipo_tela(self, esquema_id: str) -> None:
+        self.http.delete(f"/rest/api/3/issuetypescreenscheme/{esquema_id}")
+
+    def adicionar_itens_tipo_tela(self, esquema_id: str, itens: List[dict]) -> None:
+        self.http.put(f"/rest/api/3/issuetypescreenscheme/{esquema_id}/mapping", json={"issueTypeMappings": itens})
+
+    def salvar_padrao_tipo_tela(self, esquema_id: str, esquema_tela_id: str) -> None:
+        self.http.put(f"/rest/api/3/issuetypescreenscheme/{esquema_id}/mapping/default",
+                      json={"screenSchemeId": esquema_tela_id})
+
+    def remover_itens_tipo_tela(self, esquema_id: str, tipo_issue_ids: List[str]) -> None:
+        self.http.post(f"/rest/api/3/issuetypescreenscheme/{esquema_id}/mapping/remove",
+                       json={"issueTypeIds": tipo_issue_ids})
+
+    def associar_esquema_tipo_tela(self, esquema_id: str, projeto_id: str) -> None:
+        self.http.put("/rest/api/3/issuetypescreenscheme/project",
+                      json={"issueTypeScreenSchemeId": esquema_id, "projectId": projeto_id})

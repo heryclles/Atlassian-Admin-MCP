@@ -153,6 +153,9 @@ class TestSkills(unittest.TestCase):
                              "forms_obter_da_issue"),
             "forms-respostas": ("forms_salvar_respostas", "forms_obter_da_issue", "forms_obter_dados_externos",
                                 "forms_obter_dados_externos_rt"),
+            "jira-telas": ("jira_criar_esquema_tela", "jira_salvar_esquema_tela", "jira_listar_esquemas_tela",
+                           "jira_criar_esquema_tipo_tela", "jira_adicionar_itens_tipo_tela",
+                           "jira_listar_itens_tipo_tela", "jira_mover_campo_aba"),
         }
         for skill, nomes in esperado.items():
             for nome in nomes:
@@ -182,6 +185,21 @@ class TestSkills(unittest.TestCase):
             self.assertTrue(qid.isdigit(), qid)
             self.assertLessEqual(set(resposta), {"adf", "choices", "date", "files", "text", "time", "users"}, qid)
             self.assertTrue(all(isinstance(u, str) for u in resposta.get("users", [])), "users grava accountIds")
+
+    def test_exemplos_de_telas_usam_so_chaves_da_api(self):
+        """Chaves de ScreenTypes e IssueTypeScreenSchemeMapping na especificacao do Jira."""
+        texto = (PASTA_SKILLS / "jira-telas" / "SKILL.md").read_text(encoding="utf-8")
+        blocos = [json.loads(b.split("```")[0]) for b in texto.split("```json")[1:]]
+        telas = [b for b in blocos if isinstance(b, dict)]
+        itens = [b for b in blocos if isinstance(b, list)]
+        self.assertTrue(telas and itens)
+        for b in telas:
+            self.assertLessEqual(set(b), {"default", "create", "edit", "view"})
+        self.assertIn("default", telas[0], "exemplo de criacao sem default")
+        for lista in itens:
+            self.assertIn("default", [i["issueTypeId"] for i in lista])
+            for i in lista:
+                self.assertEqual(set(i), {"issueTypeId", "screenSchemeId"})
 
 
 if __name__ == "__main__":

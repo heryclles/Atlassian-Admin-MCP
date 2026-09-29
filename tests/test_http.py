@@ -177,5 +177,61 @@ class TestFormsNaIssue(unittest.TestCase):
         self.assertEqual([ch[2] for ch in s.chamadas[1:]], [{"requestLanguage": "en-US"}, {}])
 
 
+class TestTelas(unittest.TestCase):
+    def test_parametros_so_com_o_informado(self):
+        c, s = cliente([Resposta({"values": []}), Resposta({"values": []})])
+        j = Jira(c)
+        j.telas_pagina(filtro="Bug", ids=["1", "2"])
+        j.esquemas_tela_pagina()
+        self.assertEqual(s.chamadas[0][2], {"startAt": 0, "maxResults": 50, "queryString": "Bug", "id": ["1", "2"]})
+        self.assertEqual(s.chamadas[1][2], {"startAt": 0, "maxResults": 50})
+
+    def test_null_no_esquema_de_tela_chega_a_api(self):
+        """null em create/edit/view tira a tela da operacao: nao pode sumir do corpo."""
+        c, s = cliente([Resposta(None)])
+        Jira(c).salvar_esquema_tela("5", telas={"create": "7", "view": None})
+        self.assertEqual(s.chamadas[0][:2], ("PUT", "https://site.atlassian.net/rest/api/3/screenscheme/5"))
+        self.assertEqual(s.chamadas[0][3], {"screens": {"create": "7", "view": None}})
+
+    def test_corpos_de_campos_e_itens(self):
+        c, s = cliente([Resposta({"id": "duedate"}), Resposta(None), Resposta(None), Resposta(None), Resposta(None)])
+        j = Jira(c)
+        j.adicionar_campo_aba("1", "2", "duedate")
+        j.mover_campo_aba("1", "2", "duedate", posicao="First")
+        j.adicionar_itens_tipo_tela("9", [{"issueTypeId": "10001", "screenSchemeId": "3"}])
+        j.remover_itens_tipo_tela("9", ["10001"])
+        j.associar_esquema_tipo_tela("9", "10000")
+        self.assertEqual([ch[3] for ch in s.chamadas], [
+            {"fieldId": "duedate"}, {"position": "First"},
+            {"issueTypeMappings": [{"issueTypeId": "10001", "screenSchemeId": "3"}]},
+            {"issueTypeIds": ["10001"]}, {"issueTypeScreenSchemeId": "9", "projectId": "10000"}])
+        self.assertTrue(s.chamadas[1][1].endswith("/screens/1/tabs/2/fields/duedate/move"))
+
+    def test_obter_tela_junta_abas_e_campos(self):
+        from atlassian_mcp_for_admins.ferramentas import jira as ferramentas
+        c, s = cliente([Resposta({"values": [{"id": 1, "name": "T", "self": "x"}]}),
+                        Resposta([{"id": 10, "name": "A"}, {"id": 11, "name": "B"}]),
+                        Resposta([{"id": "summary", "name": "Resumo"}]), Resposta([])])
+        with mock.patch.object(ferramentas, "obter", return_value=mock.Mock(jira=Jira(c))):
+            tela = ferramentas.jira_obter_tela("1")
+        self.assertEqual(tela, {"id": 1, "name": "T", "tabs": [
+            {"id": 10, "name": "A", "total_campos": 1, "fields": [{"id": "summary", "name": "Resumo"}]},
+            {"id": 11, "name": "B", "total_campos": 0, "fields": []}]})
+
+    def test_fatia_de_lista_inteira(self):
+        from atlassian_mcp_for_admins.ferramentas.jira import _fatia
+        self.assertEqual(_fatia(list("abcde"), 0, 2),
+                         {"total": 5, "inicio": 0, "retornados": 2, "proximo_inicio": 2, "itens": ["a", "b"]})
+        self.assertIsNone(_fatia(list("abcde"), 4, 2)["proximo_inicio"])
+        self.assertEqual(_fatia(list("abc"), 9, 2)["itens"], [])
+        self.assertEqual(set(_fatia(list("abc"), 0, 2, "campos")),
+                         {"total", "inicio", "retornados", "proximo_inicio", "campos"})
+
+    def test_tela_inexistente_vira_erro_previsto(self):
+        c, _ = cliente([Resposta({"values": []})])
+        with self.assertRaises(LookupError):
+            Jira(c).tela("999")
+
+
 if __name__ == "__main__":
     unittest.main()

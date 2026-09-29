@@ -30,7 +30,7 @@ Claude le para decidir quando usar cada ferramenta.
 .claude-plugin/
   plugin.json         manifesto: userConfig (credenciais), servidor MCP "api", skills
   marketplace.json    marketplace "atlassian-admin" com o proprio repo como plugin
-skills/<skill>/SKILL.md   uma skill por payload complexo, ex. forms-design, forms-respostas
+skills/<skill>/SKILL.md   uma skill por payload complexo, ex. forms-design, forms-respostas, jira-telas
 src/atlassian_mcp_for_admins/
   config.py           credenciais: env do plugin (userConfig) e, se vazio, .env; sem projeto fixo
   nucleo/http.py      ClienteHttp: auth, retry 429/5xx, erros legiveis, paginacoes,
@@ -52,7 +52,11 @@ Cada produto (API) da Atlassian usa o mesmo nome em tres lugares:
 - `ferramentas/<produto>.py`: as ferramentas MCP daquele produto.
 - Nome da ferramenta: `<produto>_<verbo>_<objeto>`, ex. `jsm_criar_request_type`.
   Verbos: listar, obter, buscar, contar, criar, salvar, excluir, usos, copiar,
-  e os de acao da API: enviar (submit), reabrir (reopen).
+  e os de acao da API: enviar (submit), reabrir (reopen), adicionar (add),
+  remover (remove), mover (move), associar (assign). adicionar/remover mexem so na
+  ligacao entre objetos que continuam existindo (campo na aba, item no esquema);
+  criar/excluir fazem nascer ou apagar o objeto. Nunca usar excluir para tirar
+  algo de um lugar.
 
 Como decidir o produto: pela API que serve o endpoint (a URL base), nunca pelo
 assunto. Exemplos: o formulario de um request type vem da Forms API, entao fica em
@@ -173,6 +177,12 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   `"<campo>" = "ari:cloud:cmdb::object/<workspaceId>/<objectId>"`. A chave do objeto
   (ABC-123) e o objectId sozinho retornam zero.
 - Busca de issues: POST /rest/api/3/search/jql (nextPageToken); o GET /search saiu.
+- Telas, abas, esquemas de tela e esquemas de tela por tipo de issue: so projetos
+  company-managed, exigem admin do Jira. Projeto -> esquema por tipo de issue ->
+  esquema de tela -> tela; e o unico caminho de uma tela ate os projetos (skill
+  jira-telas). Campos da aba e availableFields vem inteiros, sem paginacao, e a aba
+  pode repetir o mesmo campo em sequencia: as ferramentas entregam em partes
+  (inicio/proximo_inicio). /field/{id}/screens so aceita campo customizado.
 - Status e workflows exigem admin do Jira. Usos paginam por nextPageToken
   aninhado. Workflow pode guardar o nome antigo de um status renomeado.
 - Forms API: erros vem como lista `errors: [{title, detail}]` (o `ErroAtlassian`
@@ -193,9 +203,13 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   skill forms-design.
 - v0.4: plugin de marketplace instalado por git, ambiente criado pelo uv na
   pasta de dados do plugin, erros previstos repassados ao Claude com o motivo.
-- v0.5 (atual): Forms API completa para JSON (formularios na issue: preencher,
+- v0.5: Forms API completa para JSON (formularios na issue: preencher,
   enviar, reabrir, visibilidade, copiar, dados externos, anexos), skill
   forms-respostas, erros da Forms API legiveis.
-- Proximos candidatos: Assets (objetos, esquemas, AQL), criacao e edicao de
+- v0.6 (atual): telas, abas, campos da aba, esquemas de tela e esquemas de tela
+  por tipo de issue (ler, criar, editar, excluir, associar a projeto), tipos de
+  issue, skill jira-telas, verbos adicionar/remover/mover/associar.
+- Proximos candidatos: configuracoes de campo (obrigatorio/oculto) e esquemas de
+  tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
   issues, transicoes, filas e SLAs do JSM, Confluence. Cada um com a skill do seu
   payload quando precisar (ex. assets-aql).

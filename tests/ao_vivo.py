@@ -117,6 +117,58 @@ def na_issue(ferramenta):
     return chamar
 
 
+def cadeia_de_telas():
+    """Caminho da skill jira-telas: projeto -> esquema por tipo -> esquema de tela -> tela."""
+    projeto_id = jira.jira_obter_projeto(ctx["projeto"])["id"]
+    r = jira.jira_listar_tipo_tela_projetos([projeto_id])
+    if not r["values"]:
+        raise Pular("projeto sem esquema de tela por tipo de issue (team-managed?)")
+    ctx["itss"] = r["values"][0]["issueTypeScreenScheme"]["id"]
+    itens = jira.jira_listar_itens_tipo_tela([ctx["itss"]])["values"]
+    padrao = next(i for i in itens if i["issueTypeId"] == "default")
+    esquema = jira.jira_listar_esquemas_tela(ids=[padrao["screenSchemeId"]], incluir_usos=True)["values"][0]
+    ctx["tela"] = str(esquema["screens"].get("create") or esquema["screens"]["default"])
+    return {"itss": ctx["itss"], "itens": len(itens), "esquema_tela": esquema["id"], "tela_criar": ctx["tela"]}
+
+
+def tela_inteira():
+    if "tela" not in ctx:
+        raise Pular("sem tela descoberta")
+    t = jira.jira_obter_tela(ctx["tela"])
+    custom = [c["id"] for a in t["tabs"] for c in a["fields"] if c["id"].startswith("customfield_")]
+    if custom:
+        ctx["campo"] = custom[0]
+    ctx["aba"] = t["tabs"][0]["id"]
+    return {"tela": t["name"], "abas": len(t["tabs"]), "total_campos": sum(a["total_campos"] for a in t["tabs"])}
+
+
+def campos_da_aba_todos():
+    """Percorre as partes de jira_listar_campos_aba e confere com o total."""
+    if "aba" not in ctx:
+        raise Pular("sem aba descoberta")
+    inicio, n = 0, 0
+    while inicio is not None:
+        r = jira.jira_listar_campos_aba(ctx["tela"], ctx["aba"], inicio=inicio, limite=2000)
+        n += r["retornados"]
+        inicio = r["proximo_inicio"]
+    assert n == r["total"], f"{n} x total {r['total']}"
+    return {"percorridos": n}
+
+
+def usos_campo():
+    if "campo" not in ctx:
+        raise Pular("tela sem campo customizado")
+    return {"campo": ctx["campo"], "telas": jira.jira_usos_campo(ctx["campo"], limite=5)["total"]}
+
+
+def na_tela(ferramenta):
+    def chamar():
+        if "tela" not in ctx:
+            raise Pular("sem tela descoberta")
+        return ferramenta(ctx["tela"])
+    return chamar
+
+
 def host_recusado():
     try:
         geral.atlassian_get("https://evil.example.com/rest/api/3/myself")
@@ -141,6 +193,18 @@ CASOS = [
     ("jira_listar_status + usos", status_e_usos),
     ("jira_listar_workflows todos", workflows_todos),
     ("jira_usos_workflow", lambda: jira.jira_usos_workflow(ctx["workflow"])),
+    ("jira_listar_tipos_issue", lambda: {"total": jira.jira_listar_tipos_issue()["total"]}),
+    ("jira_listar_telas", lambda: {"total": jira.jira_listar_telas(limite=5)["total"]}),
+    ("jira_listar_esquemas_tipo_tela", lambda: {"total": jira.jira_listar_esquemas_tipo_tela(limite=5)["total"]}),
+    ("cadeia de telas do projeto", cadeia_de_telas),
+    ("jira_obter_tela", tela_inteira),
+    ("jira_listar_abas", na_tela(lambda t: {"total": jira.jira_listar_abas(t)["total"]})),
+    ("jira_listar_campos_aba partes", campos_da_aba_todos),
+    ("jira_listar_campos_disponiveis", na_tela(lambda t: {
+        k: v for k, v in jira.jira_listar_campos_disponiveis(t, limite=5).items() if k != "campos"})),
+    ("jira_usos_campo", usos_campo),
+    ("jira_usos_esquema_tipo_tela", lambda: {"projetos": jira.jira_usos_esquema_tipo_tela(ctx["itss"])["total"]}
+     if "itss" in ctx else (_ for _ in ()).throw(Pular("sem esquema descoberto"))),
     ("jsm_listar_request_types", request_types),
     ("jsm_obter_request_type", lambda: jsm.jsm_obter_request_type(ctx["projeto"], ctx["rt"])),
     ("jsm_listar_campos_request_type", lambda: jsm.jsm_listar_campos_request_type(ctx["projeto"], ctx["rt"])),
