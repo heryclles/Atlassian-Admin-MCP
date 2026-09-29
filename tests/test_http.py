@@ -278,5 +278,100 @@ class TestPrioridades(unittest.TestCase):
             ferramentas.jira_salvar_esquema_prioridade("5", mapeamentos={"in": {"1": 2}})
 
 
+class TestConfigCampos(unittest.TestCase):
+    def test_corpos_de_escrita(self):
+        c, s = cliente([Resposta(None)] * 5)
+        j = Jira(c)
+        j.salvar_campos_config("7", [{"id": "environment", "isHidden": True}])
+        j.salvar_config_campo("7", "Nova", "Desc")
+        j.adicionar_itens_config("3", [{"issueTypeId": "default", "fieldConfigurationId": "7"}])
+        j.remover_itens_config("3", ["10001"])
+        j.associar_esquema_config(None, "100")
+        base = "https://site.atlassian.net/rest/api/3"
+        self.assertEqual([ch[:2] for ch in s.chamadas], [
+            ("PUT", f"{base}/fieldconfiguration/7/fields"), ("PUT", f"{base}/fieldconfiguration/7"),
+            ("PUT", f"{base}/fieldconfigurationscheme/3/mapping"),
+            ("POST", f"{base}/fieldconfigurationscheme/3/mapping/delete"),
+            ("PUT", f"{base}/fieldconfigurationscheme/project")])
+        self.assertEqual([ch[3] for ch in s.chamadas], [
+            {"fieldConfigurationItems": [{"id": "environment", "isHidden": True}]},
+            {"name": "Nova", "description": "Desc"},
+            {"mappings": [{"issueTypeId": "default", "fieldConfigurationId": "7"}]},
+            {"issueTypeIds": ["10001"]},
+            {"fieldConfigurationSchemeId": None, "projectId": "100"}])
+
+    def test_somente_padrao_vira_is_default(self):
+        c, s = cliente([Resposta({"values": []})])
+        Jira(c).configs_campo_pagina(somente_padrao=True)
+        self.assertEqual(s.chamadas[0][2], {"startAt": 0, "maxResults": 50, "isDefault": "true"})
+
+    def test_filtro_por_campo_percorre_todas_as_paginas(self):
+        from atlassian_mcp_for_admins.ferramentas import jira as ferramentas
+        c, s = cliente([Resposta({"values": [{"id": "summary"}, {"id": "x"}], "total": 3, "isLast": False}),
+                        Resposta({"values": [{"id": "environment", "isHidden": True}], "total": 3, "isLast": True})])
+        with mock.patch.object(ferramentas, "obter", return_value=mock.Mock(jira=Jira(c))):
+            r = ferramentas.jira_listar_campos_config("7", campo_ids=["environment", "nao_existe"])
+        self.assertEqual(r["values"], [{"id": "environment", "isHidden": True}])
+        self.assertEqual(r["nao_encontrados"], ["nao_existe"])
+        self.assertEqual([ch[2]["startAt"] for ch in s.chamadas], [0, 2])
+
+
+class TestEsquemasCampos(unittest.TestCase):
+    def test_404_sem_corpo_explica_que_a_api_esta_desligada(self):
+        """Com o beta desligado a API responde 404 vazio; o Claude precisa saber o motivo."""
+        c, _ = cliente([Resposta(None, 404)])
+        with self.assertRaises(LookupError) as ctx:
+            Jira(c).esquemas_campos_pagina()
+        self.assertIn("desligada", str(ctx.exception))
+
+    def test_404_com_corpo_continua_erro_da_api(self):
+        c, _ = cliente([Resposta({"errorMessages": ["Scheme 9 not found"]}, 404)])
+        with self.assertRaises(ErroAtlassian):
+            Jira(c).esquema_campos("9")
+
+    def test_corpos_em_lote_com_ids_inteiros(self):
+        c, s = cliente([Resposta(None), Resposta(None), Resposta(None), Resposta(None), Resposta(None)])
+        j = Jira(c)
+        j.adicionar_campos_esquema({"customfield_1": [{"schemeIds": ["10"], "restrictedToWorkTypes": ["3"]}]})
+        j.remover_campos_esquema({"customfield_1": {"schemeIds": ["10"]}})
+        j.salvar_parametros_campos({"description": [{"schemeIds": ["10"], "parameters": {"isRequired": True},
+                                                     "workTypeParameters": [{"workTypeId": "3", "isRequired": False}]}]})
+        j.remover_parametros_campos({"description": [{"schemeId": "10", "workTypeIds": ["3"],
+                                                      "parameters": ["isRequired"]}]})
+        j.associar_esquema_campos("10", ["100", "101"])
+        base = "https://site.atlassian.net/rest/api/3/config/fieldschemes"
+        self.assertEqual([ch[:2] for ch in s.chamadas], [
+            ("PUT", f"{base}/fields"), ("DELETE", f"{base}/fields"), ("PUT", f"{base}/fields/parameters"),
+            ("DELETE", f"{base}/fields/parameters"), ("PUT", f"{base}/projects")])
+        self.assertEqual([ch[3] for ch in s.chamadas], [
+            {"customfield_1": [{"schemeIds": [10], "restrictedToWorkTypes": [3]}]},
+            {"customfield_1": {"schemeIds": [10]}},
+            {"description": [{"schemeIds": [10], "parameters": {"isRequired": True},
+                              "workTypeParameters": [{"workTypeId": 3, "isRequired": False}]}]},
+            {"description": [{"schemeId": 10, "workTypeIds": [3], "parameters": ["isRequired"]}]},
+            {"10": {"projectIds": [100, 101]}}])
+
+    def test_parametros_de_leitura(self):
+        c, s = cliente([Resposta({"values": []}), Resposta({"values": []})])
+        j = Jira(c)
+        j.esquemas_campos_pagina(projeto_ids=["100"])
+        j.campos_esquema_pagina("10", campo_ids=["description"], limite=100)
+        self.assertEqual(s.chamadas[0][2], {"startAt": 0, "maxResults": 50, "projectId": ["100"]})
+        self.assertEqual(s.chamadas[1][2], {"startAt": 0, "maxResults": 100, "fieldId": ["description"]})
+        self.assertTrue(s.chamadas[1][1].endswith("/config/fieldschemes/10/fields"))
+
+    def test_escrita_sem_resposta_vira_resultado_vazio(self):
+        from atlassian_mcp_for_admins.ferramentas import jira as ferramentas
+        c, _ = cliente([Resposta(None)])
+        with mock.patch.object(ferramentas, "obter", return_value=mock.Mock(jira=Jira(c))):
+            r = ferramentas.jira_remover_campos_esquema({"customfield_1": {"schemeIds": [10]}})
+        self.assertEqual(r, {"campos": ["customfield_1"], "results": None})
+
+    def test_salvar_esquema_sem_alteracao_e_recusado(self):
+        from atlassian_mcp_for_admins.ferramentas import jira as ferramentas
+        with self.assertRaises(ValueError):
+            ferramentas.jira_salvar_esquema_campos("5")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -211,6 +211,61 @@ def sugestao_de_mapeamento():
     return {"removida": ultima, "a_mapear": [p["id"] for p in r["values"]]}
 
 
+def cadeia_de_configuracao_de_campo():
+    """Caminho da skill jira-config-campos: projeto -> esquema -> item -> configuracao."""
+    projeto_id = jira.jira_obter_projeto(ctx["projeto"])["id"]
+    grupos = jira.jira_listar_config_projetos([projeto_id])["values"]
+    grupo = next(g for g in grupos if projeto_id in g["projectIds"])
+    esquema = (grupo.get("fieldConfigurationScheme") or {}).get("id")
+    if esquema:
+        itens = jira.jira_listar_itens_config([esquema])["values"]
+        config = next(i for i in itens if i["issueTypeId"] == "default")["fieldConfigurationId"]
+    else:
+        config = str(jira.jira_listar_configs_campo(somente_padrao=True)["values"][0]["id"])
+    ctx["config_campo"] = config
+    return {"esquema": esquema or "padrao do site", "config": config}
+
+
+def campos_da_configuracao():
+    if "config_campo" not in ctx:
+        raise Pular("sem configuracao de campo descoberta")
+    pagina = jira.jira_listar_campos_config(ctx["config_campo"], limite=5)
+    r = jira.jira_listar_campos_config(ctx["config_campo"], campo_ids=["summary", "nao_existe"])
+    assert [i["id"] for i in r["values"]] == ["summary"] and r["nao_encontrados"] == ["nao_existe"]
+    return {"total_itens": pagina["total"], "summary": r["values"][0]}
+
+
+def esquema_de_campos_do_projeto():
+    """API nova, em beta: pula se estiver desligada no site."""
+    projeto_id = jira.jira_obter_projeto(ctx["projeto"])["id"]
+    try:
+        r = jira.jira_listar_esquemas_campos(projeto_ids=[projeto_id])
+    except LookupError as e:
+        raise Pular(str(e))
+    if not r["values"]:
+        raise Pular("projeto sem esquema de campos")
+    ctx["esquema_campos"] = str(r["values"][0]["id"])
+    usos = jira.jira_usos_esquema_campos(ctx["esquema_campos"], projeto_ids=[projeto_id])
+    assert usos["total"] == 1, "projeto nao aparece nos usos do proprio esquema"
+    return {"esquema": ctx["esquema_campos"], "campos": r["values"][0].get("fieldsCount")}
+
+
+def campos_do_esquema_todos():
+    if "esquema_campos" not in ctx:
+        raise Pular("sem esquema de campos descoberto")
+    inicio, ids = 0, []
+    while True:
+        r = jira.jira_listar_campos_esquema(ctx["esquema_campos"], inicio=inicio, limite=100)
+        ids += [c["fieldId"] for c in r["values"]]
+        if r.get("isLast") or not r["values"]:
+            break
+        inicio += len(r["values"])
+    assert len(ids) == len(set(ids)) == r["total"], f"{len(ids)} x total {r['total']}"
+    um = jira.jira_listar_campos_esquema(ctx["esquema_campos"], campo_ids=[ids[0]])["values"]
+    assert [c["fieldId"] for c in um] == [ids[0]], "filtro por campo nao funcionou"
+    return {"percorridos": len(ids)}
+
+
 def host_recusado():
     try:
         geral.atlassian_get("https://evil.example.com/rest/api/3/myself")
@@ -256,6 +311,12 @@ CASOS = [
     ("jira_usos_esquema_prioridade", lambda: {"projetos": jira.jira_usos_esquema_prioridade(
         ctx["esquema_prioridade"], limite=5)["total"]}),
     ("jira_listar_prioridades_mapear", sugestao_de_mapeamento),
+    ("jira_listar_configs_campo", lambda: {"total": jira.jira_listar_configs_campo(limite=5)["total"]}),
+    ("jira_listar_esquemas_config", lambda: {"total": jira.jira_listar_esquemas_config(limite=5)["total"]}),
+    ("cadeia de configuracao de campo", cadeia_de_configuracao_de_campo),
+    ("jira_listar_campos_config", campos_da_configuracao),
+    ("esquema de campos do projeto", esquema_de_campos_do_projeto),
+    ("jira_listar_campos_esquema todos", campos_do_esquema_todos),
     ("jsm_listar_request_types", request_types),
     ("jsm_obter_request_type", lambda: jsm.jsm_obter_request_type(ctx["projeto"], ctx["rt"])),
     ("jsm_listar_campos_request_type", lambda: jsm.jsm_listar_campos_request_type(ctx["projeto"], ctx["rt"])),

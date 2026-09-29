@@ -1,5 +1,6 @@
-"""Jira: issues, projetos, campos, status, workflows, telas, esquemas de tela, prioridades
-e esquemas de prioridade.
+"""Jira: issues, projetos, campos, status, workflows, telas, esquemas de tela, prioridades,
+esquemas de prioridade, configuracoes de campo e esquemas de configuracao de campo
+(API antiga) e esquemas de campos (API nova, em beta).
 
 Telas e esquemas so existem em projetos company-managed (classicos) e exigem admin do Jira.
 """
@@ -10,6 +11,8 @@ from ._comum import escrita, faixa, leitura, limpar, usa_skill
 
 SKILL_TELAS = "jira-telas"
 SKILL_PRIORIDADES = "jira-prioridades"
+SKILL_CONFIG = "jira-config-campos"
+SKILL_CAMPOS = "jira-esquemas-campos"
 
 
 def _fatia(itens: list, inicio: int, limite: int, chave: str = "itens") -> dict:
@@ -633,6 +636,310 @@ def jira_excluir_esquema_prioridade(esquema_id: str) -> dict:
     return {"excluido": esquema_id}
 
 
+# ------------------------------------------------ configuracoes de campo
+@leitura
+@usa_skill(SKILL_CONFIG)
+def jira_listar_configs_campo(filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                              somente_padrao: bool = False, inicio: int = 0, limite: int = 50) -> dict:
+    """Configuracoes de campo (obrigatorio, oculto, descricao e renderizador de cada campo),
+    paginadas. So projetos company-managed.
+
+    filtro: trecho do nome ou da descricao. somente_padrao: so a configuracao padrao do
+    site (isDefault). Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.configs_campo_pagina(filtro=filtro, ids=ids, somente_padrao=somente_padrao,
+                                                    inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@leitura
+@usa_skill(SKILL_CONFIG)
+def jira_listar_campos_config(config_id: str, campo_ids: Optional[List[str]] = None, inicio: int = 0,
+                              limite: int = 100) -> dict:
+    """Itens de uma configuracao de campo: id do campo, isHidden, isRequired, description e
+    renderer. A configuracao traz todos os campos do site (mais de mil em sites grandes).
+
+    campo_ids: so esses campos (ex. ["description", "customfield_10000"]); a ferramenta
+    percorre todas as paginas e devolve so eles. Sem campo_ids, uma pagina: se isLast for
+    false, chame de novo com inicio = inicio + limite.
+    """
+    j = obter().jira
+    if campo_ids:
+        procurados = set(campo_ids)
+        itens = [i for i in j.campos_config(config_id) if i.get("id") in procurados]
+        return {"config_id": config_id, "campo_ids": campo_ids,
+                "nao_encontrados": sorted(procurados - {i["id"] for i in itens}), "values": limpar(itens)}
+    return limpar(j.campos_config_pagina(config_id, inicio=max(0, inicio), limite=faixa(limite, 1, 200)))
+
+
+@escrita
+def jira_criar_config_campo(nome: str, descricao: Optional[str] = None) -> dict:
+    """Cria uma configuracao de campo com as propriedades da padrao, mas com todos os campos
+    opcionais. Nao entra em esquema sozinha: jira_adicionar_itens_config. Devolve o id."""
+    return limpar(obter().jira.criar_config_campo(nome, descricao))
+
+
+@escrita
+def jira_salvar_config_campo(config_id: str, nome: str, descricao: Optional[str] = None) -> dict:
+    """Renomeia uma configuracao de campo. A API sobrescreve nome E descricao: para manter a
+    descricao, repita a atual. Os campos tem ferramenta propria (jira_salvar_campos_config)."""
+    obter().jira.salvar_config_campo(config_id, nome, descricao)
+    return {"salva": config_id}
+
+
+@escrita
+def jira_excluir_config_campo(config_id: str) -> dict:
+    """Exclui uma configuracao de campo. Exclua so a que nao esta em nenhum esquema de
+    configuracao de campo (jira_listar_itens_config). Nao ha como desfazer."""
+    obter().jira.excluir_config_campo(config_id)
+    return {"excluida": config_id}
+
+
+@escrita
+@usa_skill(SKILL_CONFIG)
+def jira_salvar_campos_config(config_id: str, itens: List[dict]) -> dict:
+    """Muda obrigatorio, oculto, descricao (texto de ajuda) ou renderizador de campos numa
+    configuracao de campo. Vale para todo projeto e tipo de issue que usa a configuracao.
+
+    itens: [{"id": "customfield_10000", "isRequired": true}, {"id": "environment",
+    "isHidden": true}, {"id": "description", "description": "Passos para reproduzir",
+    "renderer": "wiki-renderer"}]. So o que vier no item muda. Ocultar apaga obrigatorio,
+    descricao e renderizador do campo; reexibir nao os restaura.
+    """
+    obter().jira.salvar_campos_config(config_id, itens)
+    return {"config_id": config_id, "salvos": [i.get("id") for i in itens]}
+
+
+# ---------------------------------- esquemas de configuracao de campo
+@leitura
+@usa_skill(SKILL_CONFIG)
+def jira_listar_esquemas_config(ids: Optional[List[str]] = None, inicio: int = 0, limite: int = 50) -> dict:
+    """Esquemas de configuracao de campo (ligam cada tipo de issue a uma configuracao de
+    campo), paginados. A API nao filtra por nome. Se isLast for false, chame de novo com
+    inicio = inicio + limite."""
+    return limpar(obter().jira.esquemas_config_pagina(ids, inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@leitura
+@usa_skill(SKILL_CONFIG)
+def jira_listar_itens_config(esquema_ids: Optional[List[str]] = None, inicio: int = 0, limite: int = 50) -> dict:
+    """Itens dos esquemas de configuracao de campo: qual configuracao vale para cada tipo de
+    issue (issueTypeId "default" = tipos sem item proprio), paginados.
+
+    esquema_ids: so desses esquemas (ate 50). Se isLast for false, chame de novo com
+    inicio = inicio + limite.
+    """
+    return limpar(obter().jira.itens_config_pagina(esquema_ids, inicio=max(0, inicio),
+                                                   limite=faixa(limite, 1, 100)))
+
+
+@leitura
+@usa_skill(SKILL_CONFIG)
+def jira_listar_config_projetos(projeto_ids: List[str], inicio: int = 0, limite: int = 50) -> dict:
+    """Esquema de configuracao de campo de cada projeto: grupos {fieldConfigurationScheme,
+    projectIds}. Grupo sem fieldConfigurationScheme = projetos no esquema padrao do site.
+
+    projeto_ids: ids numericos (jira_obter_projeto da o id pela chave). Projeto
+    team-managed nao aparece.
+    """
+    return limpar(obter().jira.config_projetos_pagina(projeto_ids, inicio=max(0, inicio),
+                                                      limite=faixa(limite, 1, 100)))
+
+
+@escrita
+def jira_criar_esquema_config(nome: str, descricao: Optional[str] = None) -> dict:
+    """Cria um esquema de configuracao de campo vazio. Os itens (tipo de issue ->
+    configuracao) entram com jira_adicionar_itens_config. Devolve o id."""
+    return limpar(obter().jira.criar_esquema_config(nome, descricao))
+
+
+@escrita
+def jira_salvar_esquema_config(esquema_id: str, nome: str, descricao: Optional[str] = None) -> dict:
+    """Renomeia um esquema de configuracao de campo. A API sobrescreve nome E descricao:
+    para manter a descricao, repita a atual."""
+    obter().jira.salvar_esquema_config(esquema_id, nome, descricao)
+    return {"salvo": esquema_id}
+
+
+@escrita
+def jira_excluir_esquema_config(esquema_id: str) -> dict:
+    """Exclui um esquema de configuracao de campo. Exclua so esquema sem projetos
+    (jira_listar_config_projetos). As configuracoes de campo nao sao excluidas. Nao ha
+    como desfazer."""
+    obter().jira.excluir_esquema_config(esquema_id)
+    return {"excluido": esquema_id}
+
+
+@escrita
+@usa_skill(SKILL_CONFIG)
+def jira_adicionar_itens_config(esquema_id: str, itens: List[dict]) -> dict:
+    """Liga tipos de issue a configuracoes de campo num esquema (cria ou troca o item).
+
+    itens: [{"issueTypeId": "default", "fieldConfigurationId": "10000"}, {"issueTypeId":
+    "10001", "fieldConfigurationId": "10002"}]; cada tipo uma vez so por chamada.
+    """
+    obter().jira.adicionar_itens_config(esquema_id, itens)
+    return {"esquema_id": esquema_id, "adicionados": itens}
+
+
+@escrita
+@usa_skill(SKILL_CONFIG)
+def jira_remover_itens_config(esquema_id: str, tipo_issue_ids: List[str]) -> dict:
+    """Tira os itens dos tipos de issue indicados (ate 100); eles passam a usar a
+    configuracao do item "default"."""
+    obter().jira.remover_itens_config(esquema_id, tipo_issue_ids)
+    return {"esquema_id": esquema_id, "removidos": tipo_issue_ids}
+
+
+@escrita
+@usa_skill(SKILL_CONFIG)
+def jira_associar_esquema_config(projeto_id: str, esquema_id: Optional[str] = None) -> dict:
+    """Troca o esquema de configuracao de campo de um projeto company-managed.
+
+    projeto_id: id numerico. Sem esquema_id, volta ao esquema padrao do site. Muda
+    obrigatorio e oculto de todos os campos do projeto.
+    """
+    obter().jira.associar_esquema_config(esquema_id, projeto_id)
+    return {"projeto_id": projeto_id, "esquema_id": esquema_id}
+
+
+# ------------------------------------ esquemas de campos (API nova, beta)
+def _resultado(r, **padrao) -> dict:
+    """Escritas em lote respondem 200/207 com results (sucesso ou erro por item) ou 204 vazio."""
+    return limpar(r) if r else {**padrao, "results": None}
+
+
+@leitura
+@usa_skill(SKILL_CAMPOS)
+def jira_listar_esquemas_campos(filtro: Optional[str] = None, projeto_ids: Optional[List[str]] = None,
+                                inicio: int = 0, limite: int = 50) -> dict:
+    """Esquemas de campos (API nova, em beta), paginados, com fieldsCount e isDefault.
+
+    filtro: trecho do nome ou da descricao. projeto_ids: so os esquemas desses projetos
+    (ids numericos): e assim que se acha o esquema de um projeto.
+    Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.esquemas_campos_pagina(filtro=filtro, projeto_ids=projeto_ids,
+                                                      inicio=max(0, inicio), limite=faixa(limite, 1, 100)))
+
+
+@leitura
+def jira_obter_esquema_campos(esquema_id: str) -> dict:
+    """Um esquema de campos pelo id: nome, descricao, fieldsCount e isDefault."""
+    return limpar(obter().jira.esquema_campos(esquema_id))
+
+
+@leitura
+@usa_skill(SKILL_CAMPOS)
+def jira_listar_campos_esquema(esquema_id: str, campo_ids: Optional[List[str]] = None, inicio: int = 0,
+                               limite: int = 50) -> dict:
+    """Campos de um esquema de campos, paginados: parametros (isRequired, description,
+    rendererType), excecoes por tipo de issue (workTypeParameters), restrictedToWorkTypes e
+    allowedOperations (o que o campo permite mudar).
+
+    campo_ids: so esses campos (ex. ["customfield_10000", "description"]); campo fora do
+    esquema nao aparece. Se isLast for false, chame de novo com inicio = inicio + limite.
+    """
+    return limpar(obter().jira.campos_esquema_pagina(esquema_id, campo_ids, inicio=max(0, inicio),
+                                                     limite=faixa(limite, 1, 100)))
+
+
+@leitura
+def jira_usos_esquema_campos(esquema_id: str, projeto_ids: Optional[List[str]] = None, inicio: int = 0,
+                             limite: int = 50) -> dict:
+    """Projetos que usam um esquema de campos, paginados. projeto_ids: confere se esses
+    projetos estao nele. Se isLast for false, chame de novo com inicio = inicio + limite."""
+    return limpar(obter().jira.projetos_esquema_campos_pagina(esquema_id, projeto_ids, inicio=max(0, inicio),
+                                                              limite=faixa(limite, 1, 100)))
+
+
+@escrita
+def jira_criar_esquema_campos(nome: str, descricao: Optional[str] = None) -> dict:
+    """Cria um esquema de campos vazio, so com os campos essenciais do sistema. Para partir
+    de um existente, use jira_copiar_esquema_campos. Devolve o id."""
+    return limpar(obter().jira.criar_esquema_campos(nome, descricao))
+
+
+@escrita
+def jira_copiar_esquema_campos(esquema_id: str, nome: str, descricao: Optional[str] = None) -> dict:
+    """Cria um esquema de campos novo copiando campos e parametros de outro. Devolve o id.
+    O esquema novo nasce sem projetos."""
+    return limpar(obter().jira.copiar_esquema_campos(esquema_id, nome, descricao))
+
+
+@escrita
+def jira_salvar_esquema_campos(esquema_id: str, nome: Optional[str] = None,
+                               descricao: Optional[str] = None) -> dict:
+    """Renomeia ou troca a descricao de um esquema de campos. Campos e parametros tem
+    ferramentas proprias."""
+    if nome is None and descricao is None:
+        raise ValueError("Informe nome ou descricao.")
+    return limpar(obter().jira.salvar_esquema_campos(esquema_id, nome, descricao))
+
+
+@escrita
+def jira_excluir_esquema_campos(esquema_id: str) -> dict:
+    """Exclui um esquema de campos. A API recusa o esquema do sistema (400) e esquema em uso
+    por projetos (409). Nao ha como desfazer."""
+    return limpar(obter().jira.excluir_esquema_campos(esquema_id))
+
+
+@escrita
+@usa_skill(SKILL_CAMPOS)
+def jira_adicionar_campos_esquema(campos: dict) -> dict:
+    """Coloca campos em esquemas de campos, ou troca os tipos de issue a que ficam restritos.
+
+    campos: {"customfield_10000": [{"schemeIds": [10000], "restrictedToWorkTypes": [10001]}]};
+    ate 100 campos e 50 esquemas por item. restrictedToWorkTypes substitui a restricao
+    atual; sem ele, o campo vale para todos os tipos. Devolve results por campo e esquema
+    (success/error): confira cada um.
+    """
+    return _resultado(obter().jira.adicionar_campos_esquema(campos), campos=list(campos))
+
+
+@escrita
+@usa_skill(SKILL_CAMPOS)
+def jira_remover_campos_esquema(campos: dict) -> dict:
+    """Tira campos de esquemas de campos: o campo deixa de existir nos projetos desses
+    esquemas (substitui o antigo "oculto"). O campo continua existindo no Jira.
+
+    campos: {"customfield_10000": {"schemeIds": [10000, 10001]}}. Devolve results por item.
+    """
+    return _resultado(obter().jira.remover_campos_esquema(campos), campos=list(campos))
+
+
+@escrita
+@usa_skill(SKILL_CAMPOS)
+def jira_salvar_parametros_campos(campos: dict) -> dict:
+    """Muda obrigatoriedade, descricao (texto de ajuda) e renderizador de campos em esquemas
+    de campos, no esquema todo e/ou por tipo de issue.
+
+    campos: {"customfield_10000": [{"schemeIds": [10000], "parameters": {"isRequired": true},
+    "workTypeParameters": [{"workTypeId": 10001, "isRequired": false}]}]}. Parametro omitido
+    ou null fica como esta. O campo precisa ja estar no esquema. Devolve results por item.
+    """
+    return _resultado(obter().jira.salvar_parametros_campos(campos), campos=list(campos))
+
+
+@escrita
+@usa_skill(SKILL_CAMPOS)
+def jira_remover_parametros_campos(campos: dict) -> dict:
+    """Apaga excecoes por tipo de issue: o tipo volta a seguir os parametros do esquema.
+
+    campos: {"customfield_10000": [{"schemeId": 10000, "workTypeIds": [10001],
+    "parameters": ["isRequired", "description"]}]}; ate 100 remocoes (tipos x parametros)
+    por chamada. Devolve results por item.
+    """
+    return _resultado(obter().jira.remover_parametros_campos(campos), campos=list(campos))
+
+
+@escrita
+@usa_skill(SKILL_CAMPOS)
+def jira_associar_esquema_campos(esquema_id: str, projeto_ids: List[str]) -> dict:
+    """Troca o esquema de campos dos projetos indicados (ids numericos): eles passam a ter
+    os campos e parametros desse esquema. Devolve results por projeto."""
+    return _resultado(obter().jira.associar_esquema_campos(esquema_id, projeto_ids), esquema_id=esquema_id)
+
+
 # --------------------------------------------------------------- tarefas
 @leitura
 def jira_obter_tarefa(tarefa_id: str) -> dict:
@@ -660,4 +967,14 @@ FERRAMENTAS = [jira_buscar_issues, jira_contar_issues, jira_obter_issue, jira_li
                jira_mover_prioridades, jira_salvar_padrao_prioridade,
                jira_listar_esquemas_prioridade, jira_listar_prioridades_esquema, jira_usos_esquema_prioridade,
                jira_listar_prioridades_mapear, jira_criar_esquema_prioridade, jira_salvar_esquema_prioridade,
-               jira_excluir_esquema_prioridade, jira_obter_tarefa]
+               jira_excluir_esquema_prioridade, jira_obter_tarefa,
+               jira_listar_configs_campo, jira_listar_campos_config, jira_criar_config_campo,
+               jira_salvar_config_campo, jira_excluir_config_campo, jira_salvar_campos_config,
+               jira_listar_esquemas_config, jira_listar_itens_config, jira_listar_config_projetos,
+               jira_criar_esquema_config, jira_salvar_esquema_config, jira_excluir_esquema_config,
+               jira_adicionar_itens_config, jira_remover_itens_config, jira_associar_esquema_config,
+               jira_listar_esquemas_campos, jira_obter_esquema_campos, jira_listar_campos_esquema,
+               jira_usos_esquema_campos, jira_criar_esquema_campos, jira_copiar_esquema_campos,
+               jira_salvar_esquema_campos, jira_excluir_esquema_campos, jira_adicionar_campos_esquema,
+               jira_remover_campos_esquema, jira_salvar_parametros_campos, jira_remover_parametros_campos,
+               jira_associar_esquema_campos]

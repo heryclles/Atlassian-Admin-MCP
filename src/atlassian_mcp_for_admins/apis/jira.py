@@ -1,7 +1,7 @@
 """Jira Cloud platform REST API v3 (/rest/api/3)."""
-from typing import Iterable, Iterator, List, Optional, Union
+from typing import Any, Iterable, Iterator, List, Optional, Union
 
-from ..nucleo.http import JSON, ClienteHttp
+from ..nucleo.http import JSON, ClienteHttp, ErroAtlassian
 
 
 def _sem_vazios(**kw) -> dict:
@@ -358,6 +358,134 @@ class Jira:
     def excluir_esquema_prioridade(self, esquema_id: str) -> None:
         self.http.delete(f"/rest/api/3/priorityscheme/{esquema_id}")
 
+    # ---------------------------------------- configuracoes de campo
+    def configs_campo_pagina(self, filtro: Optional[str] = None, ids: Optional[List[str]] = None,
+                             somente_padrao: bool = False, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/fieldconfiguration", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, query=filtro, id=ids,
+            isDefault="true" if somente_padrao else None))
+
+    def criar_config_campo(self, nome: str, descricao: Optional[str] = None) -> JSON:
+        return self.http.post("/rest/api/3/fieldconfiguration", json=_sem_vazios(name=nome, description=descricao))
+
+    def salvar_config_campo(self, config_id: str, nome: str, descricao: Optional[str] = None) -> None:
+        self.http.put(f"/rest/api/3/fieldconfiguration/{config_id}",
+                      json=_sem_vazios(name=nome, description=descricao))
+
+    def excluir_config_campo(self, config_id: str) -> None:
+        self.http.delete(f"/rest/api/3/fieldconfiguration/{config_id}")
+
+    def campos_config_pagina(self, config_id: str, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get(f"/rest/api/3/fieldconfiguration/{config_id}/fields",
+                             params={"startAt": inicio, "maxResults": limite})
+
+    def campos_config(self, config_id: str) -> Iterator[JSON]:
+        return self.http.paginar_start_at(f"/rest/api/3/fieldconfiguration/{config_id}/fields", tamanho=200)
+
+    def salvar_campos_config(self, config_id: str, itens: List[dict]) -> None:
+        self.http.put(f"/rest/api/3/fieldconfiguration/{config_id}/fields", json={"fieldConfigurationItems": itens})
+
+    # --------------------------------- esquemas de configuracao de campo
+    def esquemas_config_pagina(self, ids: Optional[List[str]] = None, inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/fieldconfigurationscheme",
+                             params=_sem_vazios(startAt=inicio, maxResults=limite, id=ids))
+
+    def criar_esquema_config(self, nome: str, descricao: Optional[str] = None) -> JSON:
+        return self.http.post("/rest/api/3/fieldconfigurationscheme",
+                              json=_sem_vazios(name=nome, description=descricao))
+
+    def salvar_esquema_config(self, esquema_id: str, nome: str, descricao: Optional[str] = None) -> None:
+        self.http.put(f"/rest/api/3/fieldconfigurationscheme/{esquema_id}",
+                      json=_sem_vazios(name=nome, description=descricao))
+
+    def excluir_esquema_config(self, esquema_id: str) -> None:
+        self.http.delete(f"/rest/api/3/fieldconfigurationscheme/{esquema_id}")
+
+    def itens_config_pagina(self, esquema_ids: Optional[List[str]] = None, inicio: int = 0,
+                            limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/fieldconfigurationscheme/mapping", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, fieldConfigurationSchemeId=esquema_ids))
+
+    def adicionar_itens_config(self, esquema_id: str, itens: List[dict]) -> None:
+        self.http.put(f"/rest/api/3/fieldconfigurationscheme/{esquema_id}/mapping", json={"mappings": itens})
+
+    def remover_itens_config(self, esquema_id: str, tipo_issue_ids: List[str]) -> None:
+        self.http.post(f"/rest/api/3/fieldconfigurationscheme/{esquema_id}/mapping/delete",
+                       json={"issueTypeIds": tipo_issue_ids})
+
+    def config_projetos_pagina(self, projeto_ids: List[str], inicio: int = 0, limite: int = 50) -> JSON:
+        return self.http.get("/rest/api/3/fieldconfigurationscheme/project",
+                             params={"startAt": inicio, "maxResults": limite, "projectId": projeto_ids})
+
+    def associar_esquema_config(self, esquema_id: Optional[str], projeto_id: str) -> None:
+        """esquema_id None associa o esquema padrao do site."""
+        self.http.put("/rest/api/3/fieldconfigurationscheme/project",
+                      json={"fieldConfigurationSchemeId": esquema_id, "projectId": projeto_id})
+
+    # ----------------------------- esquemas de campos (API nova, em beta)
+    def _esquemas_campos(self, metodo: str, caminho: str = "", **kw) -> Any:
+        """/rest/api/3/config/fieldschemes. Com a funcionalidade desligada no site, a API
+        responde 404 sem corpo; vira LookupError com o motivo provavel."""
+        try:
+            return self.http.requisitar(metodo, f"/rest/api/3/config/fieldschemes{caminho}", **kw)
+        except ErroAtlassian as e:
+            if e.status == 404 and not e.corpo:
+                raise LookupError(
+                    "HTTP 404 sem corpo em /config/fieldschemes: a API de esquemas de campos (beta) "
+                    "esta desligada neste site, ou o id informado nao existe.") from e
+            raise
+
+    def esquemas_campos_pagina(self, filtro: Optional[str] = None, projeto_ids: Optional[List[str]] = None,
+                               inicio: int = 0, limite: int = 50) -> JSON:
+        return self._esquemas_campos("GET", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, query=filtro, projectId=projeto_ids))
+
+    def esquema_campos(self, esquema_id: str) -> JSON:
+        return self._esquemas_campos("GET", f"/{esquema_id}")
+
+    def criar_esquema_campos(self, nome: str, descricao: Optional[str] = None) -> JSON:
+        return self._esquemas_campos("POST", json=_sem_vazios(name=nome, description=descricao))
+
+    def copiar_esquema_campos(self, esquema_id: str, nome: str, descricao: Optional[str] = None) -> JSON:
+        return self._esquemas_campos("POST", f"/{esquema_id}/clone", json=_sem_vazios(name=nome, description=descricao))
+
+    def salvar_esquema_campos(self, esquema_id: str, nome: Optional[str] = None,
+                              descricao: Optional[str] = None) -> JSON:
+        return self._esquemas_campos("PUT", f"/{esquema_id}", json=_sem_vazios(name=nome, description=descricao))
+
+    def excluir_esquema_campos(self, esquema_id: str) -> JSON:
+        return self._esquemas_campos("DELETE", f"/{esquema_id}")
+
+    def campos_esquema_pagina(self, esquema_id: str, campo_ids: Optional[List[str]] = None,
+                              inicio: int = 0, limite: int = 50) -> JSON:
+        return self._esquemas_campos("GET", f"/{esquema_id}/fields", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, fieldId=campo_ids))
+
+    def projetos_esquema_campos_pagina(self, esquema_id: str, projeto_ids: Optional[List[str]] = None,
+                                       inicio: int = 0, limite: int = 50) -> JSON:
+        return self._esquemas_campos("GET", f"/{esquema_id}/projects", params=_sem_vazios(
+            startAt=inicio, maxResults=limite, projectId=projeto_ids))
+
+    def adicionar_campos_esquema(self, campos: dict) -> Optional[JSON]:
+        """{campo: [{"schemeIds": [...], "restrictedToWorkTypes": [...]}]}"""
+        return self._esquemas_campos("PUT", "/fields", json=_ids_inteiros(campos))
+
+    def remover_campos_esquema(self, campos: dict) -> Optional[JSON]:
+        """{campo: {"schemeIds": [...]}}"""
+        return self._esquemas_campos("DELETE", "/fields", json=_ids_inteiros(campos))
+
+    def salvar_parametros_campos(self, campos: dict) -> Optional[JSON]:
+        """{campo: [{"schemeIds", "parameters", "workTypeParameters"}]}"""
+        return self._esquemas_campos("PUT", "/fields/parameters", json=_ids_inteiros(campos))
+
+    def remover_parametros_campos(self, campos: dict) -> Optional[JSON]:
+        """{campo: [{"schemeId", "workTypeIds", "parameters": [nomes]}]}"""
+        return self._esquemas_campos("DELETE", "/fields/parameters", json=_ids_inteiros(campos))
+
+    def associar_esquema_campos(self, esquema_id: str, projeto_ids: List[str]) -> Optional[JSON]:
+        return self._esquemas_campos("PUT", "/projects",
+                                     json={str(esquema_id): {"projectIds": _inteiros(projeto_ids)}})
+
     # -------------------------------------------------------------- tarefas
     def tarefa(self, tarefa_id: str) -> JSON:
         return self.http.get(f"/rest/api/3/task/{tarefa_id}")
@@ -366,6 +494,19 @@ class Jira:
 def _inteiros(ids: Optional[Iterable]) -> Optional[List[int]]:
     """Ids de prioridade, projeto e esquema viram inteiros (int64) no corpo."""
     return [int(i) for i in ids] if ids else None
+
+
+CHAVES_INTEIRAS = {"schemeId", "schemeIds", "workTypeId", "workTypeIds", "restrictedToWorkTypes"}
+
+
+def _ids_inteiros(dado: Any) -> Any:
+    """Corpos da API de esquemas de campos: ids de esquema e de tipo de issue viram inteiros."""
+    if isinstance(dado, dict):
+        return {k: (int(v) if isinstance(v, str) else [int(i) for i in v] if isinstance(v, list) else v)
+                if k in CHAVES_INTEIRAS and v is not None else _ids_inteiros(v) for k, v in dado.items()}
+    if isinstance(dado, list):
+        return [_ids_inteiros(v) for v in dado]
+    return dado
 
 
 def _mapeamentos(mapeamentos: Optional[dict]) -> Optional[dict]:

@@ -191,6 +191,17 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   o DELETE de prioridade responde 303 e o requests segue ate a tarefa. POST
   /priorityscheme/mappings so calcula, mas conta como POST. iconUrl foi descontinuado:
   icone e avatarId (skill jira-prioridades).
+- Comportamento dos campos tem duas APIs, ambas no plugin, e o pedido escolhe:
+  a antiga, configuracao de campo e esquema de configuracao de campo
+  (/fieldconfiguration..., obsoleta mas ativa; ferramentas `*_config*`, skill
+  jira-config-campos), e a nova, esquemas de campos (/config/fieldschemes, beta por
+  opt-in do site; ferramentas `*esquema*_campos*`, skill jira-esquemas-campos). Com o
+  beta desligado a nova responde 404 sem corpo, que vira LookupError explicando isso.
+  Na antiga, ocultar um campo apaga obrigatorio, descricao e renderizador do item e
+  cada configuracao traz todos os campos do site (mais de mil). Na nova nao ha
+  "oculto" (o campo sai do esquema ou fica restrito a tipos de issue) e as escritas
+  em lote respondem 207 com results por item quando parte falha. Contexto do campo
+  customizado (opcoes, valor padrao) e outra API.
 - Status e workflows exigem admin do Jira. Usos paginam por nextPageToken
   aninhado. Workflow pode guardar o nome antigo de um status renomeado.
 - Forms API: erros vem como lista `errors: [{title, detail}]` (o `ErroAtlassian`
@@ -217,10 +228,14 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
 - v0.6: telas, abas, campos da aba, esquemas de tela e esquemas de tela
   por tipo de issue (ler, criar, editar, excluir, associar a projeto), tipos de
   issue, skill jira-telas, verbos adicionar/remover/mover/associar.
-- v0.7 (atual): prioridades e esquemas de prioridade (ler, criar, editar,
+- v0.7: prioridades e esquemas de prioridade (ler, criar, editar,
   reordenar, excluir, mover projetos com mapeamento), tarefas assincronas,
   skill jira-prioridades.
-- Proximos candidatos: configuracoes de campo (obrigatorio/oculto) e esquemas de
-  tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
+- v0.8 (atual): comportamento dos campos nas duas APIs: configuracoes e
+  esquemas de configuracao de campo (antiga, skill jira-config-campos) e esquemas
+  de campos (nova em beta, skill jira-esquemas-campos): obrigatorio, oculto,
+  descricao, renderizador, por tipo de issue, associar a projeto.
+- Proximos candidatos: contextos de campo customizado (opcoes, valor padrao),
+  esquemas de tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
   issues, transicoes, filas e SLAs do JSM, Confluence. Cada um com a skill do seu
   payload quando precisar (ex. assets-aql).

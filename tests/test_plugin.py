@@ -159,6 +159,15 @@ class TestSkills(unittest.TestCase):
             "jira-prioridades": ("jira_criar_prioridade", "jira_excluir_prioridade",
                                  "jira_listar_esquemas_prioridade", "jira_listar_prioridades_mapear",
                                  "jira_criar_esquema_prioridade", "jira_salvar_esquema_prioridade"),
+            "jira-config-campos": ("jira_listar_configs_campo", "jira_listar_campos_config",
+                                   "jira_salvar_campos_config", "jira_listar_esquemas_config",
+                                   "jira_listar_itens_config", "jira_listar_config_projetos",
+                                   "jira_adicionar_itens_config", "jira_remover_itens_config",
+                                   "jira_associar_esquema_config"),
+            "jira-esquemas-campos": ("jira_listar_esquemas_campos", "jira_listar_campos_esquema",
+                                     "jira_adicionar_campos_esquema", "jira_remover_campos_esquema",
+                                     "jira_salvar_parametros_campos", "jira_remover_parametros_campos",
+                                     "jira_associar_esquema_campos"),
         }
         for skill, nomes in esperado.items():
             for nome in nomes:
@@ -216,6 +225,51 @@ class TestSkills(unittest.TestCase):
                 for antiga, nova in pares.items():
                     self.assertTrue(antiga.isdigit(), antiga)
                     self.assertIsInstance(nova, int)
+
+    def test_exemplos_de_configuracao_de_campo_usam_so_chaves_da_api(self):
+        """Chaves de FieldConfigurationItem e FieldConfigurationToIssueTypeMapping na especificacao."""
+        texto = (PASTA_SKILLS / "jira-config-campos" / "SKILL.md").read_text(encoding="utf-8")
+
+        def exemplo(titulo):
+            return json.loads(texto.split(titulo)[1].split("```json")[1].split("```")[0])
+
+        itens = exemplo("### Itens de campo")
+        self.assertTrue(itens)
+        for i in itens:
+            self.assertIn("id", i)
+            self.assertLessEqual(set(i), {"id", "isHidden", "isRequired", "description", "renderer"})
+            self.assertIn(i.get("renderer", "wiki-renderer"), {"wiki-renderer", "text-renderer"})
+        mapeamento = exemplo("### Itens do esquema")
+        self.assertIn("default", [m["issueTypeId"] for m in mapeamento])
+        for m in mapeamento:
+            self.assertEqual(set(m), {"issueTypeId", "fieldConfigurationId"})
+            self.assertIsInstance(m["fieldConfigurationId"], str)
+
+    def test_exemplos_de_esquemas_de_campos_usam_so_chaves_da_api(self):
+        """Chaves de UpdateFieldAssociationsRequestItem, RemoveFieldAssociationsRequestItem,
+        UpdateFieldSchemeParametersRequest e ParameterRemovalDetails na especificacao do Jira."""
+        texto = (PASTA_SKILLS / "jira-esquemas-campos" / "SKILL.md").read_text(encoding="utf-8")
+
+        def exemplo(titulo):
+            return json.loads(texto.split(titulo)[1].split("```json")[1].split("```")[0])
+
+        for campo, itens in exemplo("### Adicionar campos").items():
+            for i in itens:
+                self.assertLessEqual(set(i), {"schemeIds", "restrictedToWorkTypes"}, campo)
+                self.assertIn("schemeIds", i)
+        for campo, item in exemplo("### Remover campos").items():
+            self.assertEqual(set(item), {"schemeIds"}, campo)
+        for campo, itens in exemplo("### Parametros").items():
+            for i in itens:
+                self.assertLessEqual(set(i), {"schemeIds", "parameters", "workTypeParameters"}, campo)
+                self.assertLessEqual(set(i.get("parameters") or {}), {"isRequired", "description", "rendererType"})
+                for t in i.get("workTypeParameters", []):
+                    self.assertLessEqual(set(t), {"workTypeId", "isRequired", "description", "rendererType"})
+                    self.assertIsInstance(t["workTypeId"], int)
+        for campo, itens in exemplo("### Remover excecoes").items():
+            for i in itens:
+                self.assertEqual(set(i), {"schemeId", "workTypeIds", "parameters"}, campo)
+                self.assertLessEqual(set(i["parameters"]), {"isRequired", "description", "rendererType"})
 
 
 if __name__ == "__main__":
