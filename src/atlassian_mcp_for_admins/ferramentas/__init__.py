@@ -1,12 +1,12 @@
-"""Camada MCP: uma ferramenta por operacao da API, sem regra de negocio.
+"""Camada MCP: a conexao e tres ferramentas genericas, divididas por risco.
 
-Cada modulo expoe FERRAMENTAS = [funcoes]. As funcoes sao Python comum
-(testaveis sem MCP); a docstring vira a descricao e os type hints o schema.
-A regra de negocio fica no pedido feito no chat, que combina as ferramentas.
+As funcoes sao Python comum (testaveis sem MCP); a docstring vira a descricao e os
+type hints o schema. O conhecimento de cada endpoint fica nas skills do plugin e a
+regra de negocio no pedido feito no chat, que combina as chamadas.
 """
-from . import forms, geral, jira, jsm
+from . import geral
 
-MODULOS = [geral, jira, jsm, forms]
+MODULOS = [geral]
 
 
 def todas():

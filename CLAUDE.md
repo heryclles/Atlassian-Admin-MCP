@@ -2,27 +2,33 @@
 
 Plugin do Claude Code (`atlassian-admin`) para as APIs Atlassian Cloud de qualquer
 site, com duas partes que nao existem separadas:
-- servidor MCP de ferramentas administrativas (Python 3.12, SDK mcp 2.x, stdio);
-- skills que explicam os payloads complexos dessas ferramentas.
-Cresce por API conforme a necessidade.
+- servidor MCP (Python 3.12, SDK mcp 2.x, stdio) com quatro ferramentas genericas;
+- skills, uma por area da API, com o conhecimento de cada endpoint.
+Cresce por skill conforme a necessidade, nao por ferramenta.
 
-## Principio: ferramentas abstratas, regra de negocio no pedido
+## Principio: ferramentas genericas por risco, conhecimento nas skills
 
-- Uma ferramenta = uma operacao da API (listar, obter, criar, salvar, excluir).
-  Nada de ferramenta que resolve um caso de negocio ("status migrated por projeto",
-  "tempo medio de resolucao"). Esses casos sao pedidos no chat que combinam
-  ferramentas.
+- Quatro ferramentas, e so: `atlassian_conexao` (site, usuario, cloudId),
+  `atlassian_ler` (GET e POST de consulta), `atlassian_escrever` (POST, PUT, PATCH) e
+  `atlassian_excluir` (DELETE). A divisao e por risco porque o Claude Code casa
+  permissao de ferramenta MCP so pelo nome: o usuario libera a leitura e mantem a
+  confirmacao nas outras duas.
+- Nada de ferramenta por endpoint nem por caso de negocio. Endpoint novo e uma linha
+  na tabela da skill da area; caso de negocio e pedido no chat que combina chamadas.
+- `intencao` obrigatoria nas tres genericas: uma frase em portugues sobre o que a
+  chamada faz. E o que o usuario le no transcript e no pedido de confirmacao (o
+  Claude Code nao desenha card de resultado MCP); vai para o log, nunca para a API.
 - Devolver o que a API entrega, so sem ruido (`limpar` tira self, avatarUrls,
   _links...). Sem renomear campos, sem calcular, sem filtrar por regra.
-- Paginacao e mecanica, fica na ferramenta: devolver o token/inicio para a
-  proxima pagina em vez de trazer tudo de uma vez.
+- So mecanica fica no codigo, como opcao generica de `atlassian_ler`: seguir
+  paginacao (`limite`, `continuar`), fatiar lista inteira (`inicio`), filtrar por
+  igualdade (`filtro`), recortar (`manter`), varios caminhos numa chamada e o teto de
+  tamanho. Mecanismo novo entra assim, nunca como ferramenta especifica.
 - Nao ha arquivos de saida: tudo volta para o chat.
-- Ferramenta cujo payload nao se explica em poucas linhas (JSON de design do Forms,
-  AQL do Assets...) exige skill. Nao se entrega uma sem a outra.
 
-Idioma: portugues (pt-BR), sem acento em codigo, nomes de arquivo e chaves de
-retorno. Docstrings das ferramentas em portugues: elas viram a descricao que o
-Claude le para decidir quando usar cada ferramenta.
+Idioma: portugues (pt-BR), sem acento em codigo, nomes de arquivo, chaves de retorno
+e skills. Docstrings das ferramentas em portugues: elas viram a descricao que o
+Claude le.
 
 ## Estrutura
 
@@ -30,43 +36,45 @@ Claude le para decidir quando usar cada ferramenta.
 .claude-plugin/
   plugin.json         manifesto: userConfig (credenciais), servidor MCP "api", skills
   marketplace.json    marketplace "atlassian-admin" com o proprio repo como plugin
-skills/<skill>/SKILL.md   uma skill por payload complexo, ex. forms-design, forms-respostas, jira-telas
+skills/<skill>/SKILL.md   uma skill por area da API (atlassian-chamadas, jira-telas, forms-design...)
 src/atlassian_mcp_for_admins/
   config.py           credenciais: env do plugin (userConfig) e, se vazio, .env; sem projeto fixo
-  nucleo/http.py      ClienteHttp: auth, retry 429/5xx, erros legiveis, paginacoes,
-                      trava de host (so o site e api.atlassian.com), troca de {cloudId}
-  apis/               uma classe por produto, sem MCP: jira.py, jsm.py, forms.py
-                      obter() devolve o singleton Atlassian (at.jira, at.jsm, at.forms)
-  ferramentas/        camada MCP, um modulo por produto (+ geral.py); cada um tem
-                      FERRAMENTAS = [funcoes]
-  servidor.py         registra todas as ferramentas e roda em stdio
-tests/                test_http.py e test_plugin.py (sem rede), ao_vivo.py (leituras no
-                      site real), mcp_stdio.py (protocolo)
+  nucleo/http.py      ClienteHttp: auth, retry 429/5xx, erros legiveis, ERROS_PREVISTOS,
+                      paginar (detecta o estilo), trava de host, troca de {cloudId},
+                      dicas de 404 sem corpo, cliente() (singleton do site)
+  ferramentas/        camada MCP: geral.py com as quatro ferramentas e CONSULTAS_POST;
+                      _comum.py com leitura/escrita, limpar, usa_skill
+  servidor.py         INSTRUCOES (mapa prefixo de caminho -> skill), registra e roda em stdio
+tests/                test_http.py, test_geral.py, test_plugin.py, test_servidor.py (sem rede),
+                      ao_vivo.py (leituras no site real), mcp_stdio.py (protocolo)
 ```
 
-## Organizacao por produto
+## Skills por area
 
-Cada produto (API) da Atlassian usa o mesmo nome em tres lugares:
+Cada skill cobre uma area da API e comeca pela secao `## Endpoints`, numa tabela
+com este cabecalho exato (`test_plugin.py` confere):
 
-- `apis/<produto>.py`: classe com os metodos HTTP, exposta em `obter()` como `at.<produto>`.
-- `ferramentas/<produto>.py`: as ferramentas MCP daquele produto.
-- Nome da ferramenta: `<produto>_<verbo>_<objeto>`, ex. `jsm_criar_request_type`.
-  Verbos: listar, obter, buscar, contar, criar, salvar, excluir, usos, copiar,
-  e os de acao da API: enviar (submit), reabrir (reopen), adicionar (add),
-  remover (remove), mover (move), associar (assign). adicionar/remover mexem so na
-  ligacao entre objetos que continuam existindo (campo na aba, item no esquema);
-  criar/excluir fazem nascer ou apagar o objeto. Nunca usar excluir para tirar
-  algo de um lugar.
+```
+| Operacao | Ferramenta | Metodo e caminho | Paginacao | Observacao |
+```
 
-Como decidir o produto: pela API que serve o endpoint (a URL base), nunca pelo
-assunto. Exemplos: o formulario de um request type vem da Forms API, entao fica em
-`forms`, mesmo sendo "coisa do portal"; os campos do request type vem da
-servicedeskapi, entao ficam em `jsm`; status e workflows sao da plataforma, entao
-ficam em `jira`. Endpoint de produto novo cria o trio acima; nao misturar em
-modulo existente.
-
-`geral` nao e produto: guarda a conexao e as chamadas genericas
-(`atlassian_get`, `atlassian_requisicao`), com prefixo `atlassian_`.
+- Ferramenta bate com o metodo (GET e POST de `CONSULTAS_POST` -> atlassian_ler;
+  POST, PUT, PATCH -> atlassian_escrever; DELETE -> atlassian_excluir).
+- Metodo e caminho entre crases, sem query string; caminho comeca por `/rest/api/3/`,
+  `/rest/servicedeskapi/`, `/_edge/` ou `https://api.atlassian.com/jira/forms/cloud/{cloudId}/`;
+  parametros de caminho entre chaves em camelCase (`{telaId}`).
+- Paginacao: `token`, `startAt`, `start/limit`, `token aninhado`, `inteira` ou `nao`.
+- Depois da tabela: modelo dos objetos, receitas de leitura, payloads com exemplo,
+  tipos dos ids no corpo (inteiro ou texto: quem monta o corpo e o Claude),
+  armadilhas, fluxo seguro de alteracao e restricoes de exclusao.
+- Skill cita so as quatro ferramentas (teste com regex). Exemplos ```json de
+  algumas skills sao conferidos contra a especificacao da API; payload que nao e o
+  conferido vai em bloco sem linguagem.
+- Area nova: skill nova `skills/<produto>-<assunto>/` e o prefixo dela em
+  `INSTRUCOES` (`test_plugin.py` exige toda skill nas instrucoes, que tem limite de
+  4096 caracteres).
+- `atlassian-chamadas` e a skill das proprias ferramentas; as tres genericas a citam
+  por `@usa_skill`.
 
 | Produto | URL base | Situacao |
 |---|---|---|
@@ -78,21 +86,23 @@ modulo existente.
 | `automation` | `https://api.atlassian.com/automation/public/jira/{cloudId}/rest/v1` | futuro |
 | `confluence` | `/wiki/api/v2` | futuro |
 
-## Como adicionar uma ferramenta
+Produto novo cuja URL base ainda nao esta em `BASES` de `test_plugin.py` entra la.
+Host novo fora do site e de `api.atlassian.com` exige mudar `montar_url`.
 
-1. Identificar o produto pela URL base (secao acima). Metodo na classe de
-   `apis/<produto>.py`; produto novo ganha modulo ligado em `apis/__init__.py`.
-   Nunca chamar requests fora do `ClienteHttp`.
-2. Funcao em `ferramentas/<produto>.py` com type hints, docstring clara e o
-   decorador `@leitura` ou `@escrita`; incluir na lista `FERRAMENTAS`. Modulo
-   novo entra em `MODULOS` de `ferramentas/__init__.py`.
-3. Payload complexo? Skill em `skills/<produto>-<assunto>/SKILL.md` (frontmatter
-   `name` e `description` com os gatilhos de uso) e o decorador
-   `@usa_skill("<skill>")` na ferramenta. `test_plugin.py` falha se a skill citada
-   nao existir ou se o exemplo JSON da skill nao passar na conferencia.
-4. Caso em `tests/ao_vivo.py` e, se houver paginacao nova, teste em `test_http.py`.
-5. Rodar os testes. A sessao atual so enxerga ferramentas novas apos reiniciar o
-   servidor (nova sessao ou /mcp).
+## Como adicionar
+
+1. Endpoint de area existente: linha na tabela e, se precisar, receita ou payload na
+   skill. Conferir caminho e corpo na doc oficial (developer.atlassian.com).
+2. POST que so le (busca, leitura em lote, calculo sem efeito): incluir o caminho
+   exato em `CONSULTAS_POST` de `ferramentas/geral.py`, conferindo na especificacao
+   que ele nao altera nada.
+3. Mecanismo novo (outro estilo de paginacao, outra dica de erro): em
+   `nucleo/http.py` (`paginar`, `DICAS_404_SEM_CORPO`) ou opcao de `atlassian_ler`,
+   com teste em `test_http.py` ou `test_geral.py`.
+4. Caso em `tests/ao_vivo.py` quando a leitura tem algo a conferir; o teste ao vivo
+   ja faz GET em toda linha sem parametro de caminho das tabelas.
+5. Rodar os testes. A sessao atual so enxerga mudancas no servidor apos reinicia-lo
+   (nova sessao ou /mcp); skill nova vale na proxima sessao.
 
 ## Instalacao e credenciais
 
@@ -141,14 +151,17 @@ modulo existente.
 - Nunca escrever em stdout (`print`): e o canal do protocolo. Log via `logging`
   (vai para stderr).
 - Falha prevista vira texto para o Claude: o servidor envolve cada ferramenta com
-  `com_erro_legivel`, que converte `ERROS_PREVISTOS` em `ToolError`. No SDK 2.x
-  qualquer outra excecao chega so como "Error executing tool". Erro novo de
-  dominio: levantar um tipo que esteja em `ERROS_PREVISTOS`.
-- Respostas grandes estouram o limite de saida do MCP no Claude Code (~25 mil
-  tokens). Oferecer `limite`, paginacao ou `partes` (como em `forms_obter`) em vez
-  de devolver tudo.
-- Escrita: decorador `@escrita` (o cliente pede confirmacao). A decisao de
-  executar e do pedido; nao ha modo simulacao dentro da ferramenta.
+  `com_erro_legivel`, que converte `ERROS_PREVISTOS` (em `nucleo/http.py`) em
+  `ToolError`. No SDK 2.x qualquer outra excecao chega so como "Error executing
+  tool". Erro novo de dominio: levantar um tipo que esteja em `ERROS_PREVISTOS`.
+- Teto de 50 mil caracteres na resposta de `atlassian_ler` (acima disso o Claude
+  Code tira o resultado do chat): recusa com a orientacao de usar `limite`, `inicio`,
+  `filtro`, `manter` ou os parametros do endpoint. Nunca truncar em silencio. Ha
+  respostas reais muito acima disso (aba com milhares de campos, formulario grande).
+- `limite` vai ate 500 itens por chamada; `filtro` percorre ate 50 requisicoes;
+  caminho em lista aceita ate 20 caminhos.
+- Escrita e exclusao devolvem `{"http": status, "resposta": corpo}` (201, 204, 207
+  importam). A decisao de executar e do pedido; nao ha modo simulacao.
 - Nunca montar URL com host vindo de parametro sem passar pelo `montar_url`.
 - Nome da ferramenta com no maximo 31 caracteres: servidor de plugin vira
   `mcp__plugin_atlassian-admin_api__<ferramenta>` e o limite total e 64
@@ -158,9 +171,9 @@ modulo existente.
   abaixo de 3.10 nao roda o SDK mcp.
 - SDK mcp 2.x: a classe e `MCPServer` (`mcp.server.mcpserver`); `FastMCP` era da
   1.x. Anotacoes em snake_case (`read_only_hint`). Dependencia travada em `<3`.
-- Teste ao vivo so chama ferramentas de leitura e descobre sozinho o que ler no
-  site configurado. Escrita so e testada no site com pedido explicito do usuario,
-  no projeto que ele indicar.
+- Teste ao vivo so faz leitura e descobre sozinho o que ler no site configurado.
+  Escrita so e testada no site com pedido explicito do usuario, no projeto que ele
+  indicar.
 
 ## Independente de site
 
@@ -181,21 +194,20 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   company-managed, exigem admin do Jira. Projeto -> esquema por tipo de issue ->
   esquema de tela -> tela; e o unico caminho de uma tela ate os projetos (skill
   jira-telas). Campos da aba e availableFields vem inteiros, sem paginacao, e a aba
-  pode repetir o mesmo campo em sequencia: as ferramentas entregam em partes
-  (inicio/proximo_inicio). /field/{id}/screens so aceita campo customizado.
+  pode repetir o mesmo campo em sequencia: ler em fatias (inicio/proximo_inicio). /field/{id}/screens so aceita campo customizado.
 - Prioridades sao globais, com uma ordem unica; o esquema de prioridade so escolhe
   quais entram e o padrao (defaultPriorityId). Ids vao como inteiro no corpo e os
   mapeamentos como {"in"|"out": {"<antiga>": <nova>}}. O esquema padrao do site se
   acha por onlyDefault=true (isDefault), nunca pelo nome. Alterar esquema e excluir
-  prioridade sao assincronos: devolvem tarefa (/rest/api/3/task, jira_obter_tarefa);
+  prioridade sao assincronos: devolvem tarefa (/rest/api/3/task/{id});
   o DELETE de prioridade responde 303 e o requests segue ate a tarefa. POST
   /priorityscheme/mappings so calcula, mas conta como POST. iconUrl foi descontinuado:
   icone e avatarId (skill jira-prioridades).
 - Comportamento dos campos tem duas APIs, ambas no plugin, e o pedido escolhe:
   a antiga, configuracao de campo e esquema de configuracao de campo
-  (/fieldconfiguration..., obsoleta mas ativa; ferramentas `*_config*`, skill
+  (/fieldconfiguration..., obsoleta mas ativa; skill
   jira-config-campos), e a nova, esquemas de campos (/config/fieldschemes, beta por
-  opt-in do site; ferramentas `*esquema*_campos*`, skill jira-esquemas-campos). Com o
+  opt-in do site; skill jira-esquemas-campos). Com o
   beta desligado a nova responde 404 sem corpo, que vira LookupError explicando isso.
   Na antiga, ocultar um campo apaga obrigatorio, descricao e renderizador do item e
   cada configuracao traz todos os campos do site (mais de mil). Na nova nao ha
@@ -241,10 +253,14 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
   esquemas de configuracao de campo (antiga, skill jira-config-campos) e esquemas
   de campos (nova em beta, skill jira-esquemas-campos): obrigatorio, oculto,
   descricao, renderizador, por tipo de issue, associar a projeto.
-- v0.9 (atual): esquemas de notificacao (ler, criar, renomear, excluir,
+- v0.9: esquemas de notificacao (ler, criar, renomear, excluir,
   adicionar e remover destinatarios, associar a projeto), eventos, papeis de
   projeto, skill jira-notificacoes.
+- v1.0 (atual): as 126 ferramentas especificas viram quatro (conexao e tres
+  genericas por risco, com intencao obrigatoria, paginacao seguida pela ferramenta,
+  filtro, manter, varios caminhos e teto de tamanho); o conhecimento de cada endpoint
+  passa para as skills, uma por area, cada uma com a tabela de endpoints; skills
+  novas atlassian-chamadas, jira-issues, jira-status-workflows e jsm-request-types.
 - Proximos candidatos: contextos de campo customizado (opcoes, valor padrao),
   esquemas de tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
-  issues, transicoes, filas e SLAs do JSM, Confluence. Cada um com a skill do seu
-  payload quando precisar (ex. assets-aql).
+  issues, transicoes, Confluence. Cada um e uma skill nova (ex. assets-aql).

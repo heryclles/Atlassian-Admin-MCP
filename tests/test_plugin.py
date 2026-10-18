@@ -118,6 +118,13 @@ class TestManifesto(unittest.TestCase):
         self.assertFalse((RAIZ / ".mcp.json").exists())
 
 
+class TestFerramentas(unittest.TestCase):
+    def test_conexao_e_tres_genericas_por_risco(self):
+        marcas = {f.__name__: getattr(f, "somente_leitura", True) for f in todas()}
+        self.assertEqual(marcas, {"atlassian_conexao": True, "atlassian_ler": True,
+                                  "atlassian_escrever": False, "atlassian_excluir": False})
+
+
 class TestIndependenteDeSite(unittest.TestCase):
     def test_site_configurado_nao_aparece_no_repositorio(self):
         """O plugin roda em varios sites: nada versionado pode citar o site em uso."""
@@ -135,48 +142,74 @@ class TestIndependenteDeSite(unittest.TestCase):
         self.assertEqual(citam, [], f"arquivos citam o site {host}")
 
 
+FERRAMENTAS_POR_METODO = {"GET": "atlassian_ler", "POST": "atlassian_escrever", "PUT": "atlassian_escrever",
+                          "PATCH": "atlassian_escrever", "DELETE": "atlassian_excluir"}
+BASES = ("/rest/api/3/", "/rest/servicedeskapi/", "/_edge/", "https://api.atlassian.com/jira/forms/cloud/{cloudId}/")
+PAGINACOES = {"token", "startAt", "start/limit", "token aninhado", "inteira", "nao"}
+CABECALHO = "| Operacao | Ferramenta | Metodo e caminho | Paginacao | Observacao |"
+
+
+def endpoints(texto: str) -> list:
+    """Linhas da tabela "## Endpoints": (operacao, ferramenta, metodo, caminho, paginacao)."""
+    secao = texto.split("## Endpoints", 1)[1]
+    linhas = secao.split(CABECALHO, 1)[1].strip().splitlines()[1:]
+    saida = []
+    for linha in linhas:
+        if not linha.startswith("|"):
+            break
+        celulas = [c.strip() for c in linha.strip().strip("|").split("|")]
+        metodo, caminho = celulas[2].strip("`").split(" ", 1)
+        saida.append((celulas[0], celulas[1], metodo, caminho, celulas[3]))
+    return saida
+
+
+def skills() -> list:
+    return sorted(p for p in PASTA_SKILLS.iterdir() if (p / "SKILL.md").is_file())
+
+
 class TestSkills(unittest.TestCase):
     def test_toda_skill_citada_existe(self):
         citadas = {s for f in todas() for s in getattr(f, "skills", ())}
-        self.assertTrue(citadas, "nenhuma ferramenta cita skill")
-        for skill in citadas:
-            arquivo = PASTA_SKILLS / skill / "SKILL.md"
-            self.assertTrue(arquivo.exists(), f"skill {skill} citada mas ausente")
-            meta = frontmatter(arquivo)
-            self.assertEqual(meta["name"].strip(), skill)
-            self.assertGreater(len(meta["description"].strip()), 80)
+        self.assertEqual(citadas, {"atlassian-chamadas"})
+        for f in todas():
+            for skill in getattr(f, "skills", ()):
+                self.assertIn(f"{PLUGIN}:{skill}", f.__doc__)
 
-    def test_ferramentas_com_payload_complexo_citam_a_skill(self):
-        por_nome = {f.__name__: f for f in todas()}
-        esperado = {
-            "forms-design": ("forms_criar", "forms_salvar", "forms_obter", "forms_obter_do_request_type",
-                             "forms_obter_da_issue"),
-            "forms-respostas": ("forms_salvar_respostas", "forms_obter_da_issue", "forms_obter_dados_externos",
-                                "forms_obter_dados_externos_rt"),
-            "jira-telas": ("jira_criar_esquema_tela", "jira_salvar_esquema_tela", "jira_listar_esquemas_tela",
-                           "jira_criar_esquema_tipo_tela", "jira_adicionar_itens_tipo_tela",
-                           "jira_listar_itens_tipo_tela", "jira_mover_campo_aba"),
-            "jira-prioridades": ("jira_criar_prioridade", "jira_excluir_prioridade",
-                                 "jira_listar_esquemas_prioridade", "jira_listar_prioridades_mapear",
-                                 "jira_criar_esquema_prioridade", "jira_salvar_esquema_prioridade"),
-            "jira-config-campos": ("jira_listar_configs_campo", "jira_listar_campos_config",
-                                   "jira_salvar_campos_config", "jira_listar_esquemas_config",
-                                   "jira_listar_itens_config", "jira_listar_config_projetos",
-                                   "jira_adicionar_itens_config", "jira_remover_itens_config",
-                                   "jira_associar_esquema_config"),
-            "jira-notificacoes": ("jira_listar_esquemas_notif", "jira_obter_esquema_notif",
-                                  "jira_obter_notif_projeto", "jira_criar_esquema_notif",
-                                  "jira_adicionar_notificacoes", "jira_remover_notificacao",
-                                  "jira_associar_esquema_notif"),
-            "jira-esquemas-campos": ("jira_listar_esquemas_campos", "jira_listar_campos_esquema",
-                                     "jira_adicionar_campos_esquema", "jira_remover_campos_esquema",
-                                     "jira_salvar_parametros_campos", "jira_remover_parametros_campos",
-                                     "jira_associar_esquema_campos"),
-        }
-        for skill, nomes in esperado.items():
-            for nome in nomes:
-                self.assertIn(skill, getattr(por_nome[nome], "skills", ()), nome)
-                self.assertIn(f"{PLUGIN}:{skill}", por_nome[nome].__doc__)
+    def test_frontmatter_de_toda_skill(self):
+        for pasta in skills():
+            meta = frontmatter(pasta / "SKILL.md")
+            self.assertEqual(meta["name"].strip(), pasta.name)
+            self.assertGreater(len(meta["description"].strip()), 80, pasta.name)
+
+    def test_toda_skill_esta_nas_instrucoes_do_servidor(self):
+        from atlassian_mcp_for_admins.servidor import INSTRUCOES
+        self.assertLess(len(INSTRUCOES), 4096)
+        for pasta in skills():
+            self.assertIn(pasta.name, INSTRUCOES)
+
+    def test_tabela_de_endpoints(self):
+        """Toda skill tem a tabela; ferramenta bate com o metodo; caminho comeca por URL base conhecida."""
+        from atlassian_mcp_for_admins.ferramentas.geral import CONSULTAS_POST
+        for pasta in skills():
+            texto = (pasta / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn("## Endpoints", texto, pasta.name)
+            linhas = endpoints(texto)
+            self.assertTrue(linhas, pasta.name)
+            for operacao, ferramenta, metodo, caminho, paginacao in linhas:
+                rotulo = f"{pasta.name}: {operacao}"
+                esperada = ("atlassian_ler" if metodo == "POST" and caminho in CONSULTAS_POST
+                            else FERRAMENTAS_POR_METODO.get(metodo))
+                self.assertEqual(ferramenta, esperada, rotulo)
+                self.assertTrue(caminho.startswith(BASES), rotulo)
+                self.assertNotIn("?", caminho, rotulo)
+                self.assertIn(paginacao, PAGINACOES, rotulo)
+
+    def test_skills_citam_so_ferramentas_existentes(self):
+        nomes = {f.__name__ for f in todas()}
+        padrao = re.compile(r"\b(?:jira|jsm|forms|atlassian)_[a-z_]+")
+        for pasta in skills():
+            citadas = set(padrao.findall((pasta / "SKILL.md").read_text(encoding="utf-8")))
+            self.assertLessEqual(citadas, nomes, pasta.name)
 
     def test_exemplos_da_skill_passam_na_conferencia(self):
         texto = (PASTA_SKILLS / "forms-design" / "SKILL.md").read_text(encoding="utf-8")

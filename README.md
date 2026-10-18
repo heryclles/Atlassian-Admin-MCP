@@ -1,13 +1,13 @@
 # Atlassian MCP for Admins
 
-Plugin do Claude Code com ferramentas administrativas para Jira Cloud, Jira
-Service Management e Jira Forms. O plugin junta duas coisas que nao existem
-separadas:
+Plugin do Claude Code para administrar Jira Cloud, Jira Service Management e Jira
+Forms pelas APIs Atlassian. O plugin junta duas coisas que nao existem separadas:
 
-- **Servidor MCP** (`src/`): cada operacao da API vira uma ferramenta.
-- **Skills** (`skills/`): explicam os payloads complexos que as ferramentas
-  recebem, como o JSON de design do Forms. Ferramenta que depende de skill avisa
-  na propria descricao, e um teste garante que a skill existe.
+- **Servidor MCP** (`src/`): quatro ferramentas genericas, divididas por risco, que
+  chamam qualquer endpoint do site configurado.
+- **Skills** (`skills/`): uma por area da API, com a tabela de endpoints, os
+  payloads, os tipos dos ids, as armadilhas e o fluxo seguro de alteracao. E nelas
+  que fica o conhecimento de cada endpoint.
 
 ## Instalar
 
@@ -51,7 +51,8 @@ qualquer forma de instalacao e sobrevive as atualizacoes do plugin.
 Conferir: `claude mcp list` deve mostrar `plugin:atlassian-admin:api ... Connected`.
 Sem credencial o servidor nao sobe: o conector `api` aparece como falho, e o log
 dele diz o que falta e o caminho do arquivo. Credencial errada (token vencido) so
-aparece ao usar uma ferramenta; `atlassian_conexao` confere a conexao.
+aparece ao usar uma ferramenta; `atlassian_conexao` confere a conexao e mostra em
+qual site e com qual conta o plugin esta.
 
 A aba Chat do Claude (web e Desktop) nao roda servidor MCP local: la o plugin so
 carrega a skill. Veja a [tabela de componentes por app](https://claude.com/docs/plugins/platform-support).
@@ -91,8 +92,8 @@ uv sync
 ## Testar
 
 ```bash
-.venv/bin/python -m unittest discover -s tests   # sem rede: paginacao, plugin, skills
-.venv/bin/python -m tests.ao_vivo                # leituras contra o site
+.venv/bin/python -m unittest discover -s tests   # sem rede: paginacao, ferramentas, plugin, skills
+.venv/bin/python -m tests.ao_vivo                # leituras contra o site e GET dos endpoints das skills
 .venv/bin/python -m tests.mcp_stdio              # o servidor pelo protocolo MCP
 ```
 
@@ -100,32 +101,45 @@ uv sync
 
 No Claude Code aparecem como `mcp__plugin_atlassian-admin_api__<nome>`.
 
-| Grupo | Leitura | Escrita |
+| Ferramenta | Faz | Pede confirmacao |
 |---|---|---|
-| Geral | `atlassian_conexao`, `atlassian_get` | `atlassian_requisicao` |
-| Jira | `jira_buscar_issues`, `jira_contar_issues`, `jira_obter_issue`, `jira_listar_comentarios`, `jira_listar_projetos`, `jira_obter_projeto`, `jira_listar_campos`, `jira_listar_tipos_issue`, `jira_listar_status`, `jira_usos_status`, `jira_listar_workflows`, `jira_usos_workflow` | |
-| Jira (telas) | `jira_listar_telas`, `jira_obter_tela`, `jira_listar_campos_disponiveis`, `jira_usos_campo`, `jira_listar_abas`, `jira_listar_campos_aba` | `jira_criar_tela`, `jira_salvar_tela`, `jira_excluir_tela`, `jira_criar_aba`, `jira_salvar_aba`, `jira_excluir_aba`, `jira_mover_aba`, `jira_adicionar_campo_aba`, `jira_remover_campo_aba`, `jira_mover_campo_aba` |
-| Jira (esquemas de tela) | `jira_listar_esquemas_tela`, `jira_listar_esquemas_tipo_tela`, `jira_listar_itens_tipo_tela`, `jira_listar_tipo_tela_projetos`, `jira_usos_esquema_tipo_tela` | `jira_criar_esquema_tela`, `jira_salvar_esquema_tela`, `jira_excluir_esquema_tela`, `jira_criar_esquema_tipo_tela`, `jira_salvar_esquema_tipo_tela`, `jira_excluir_esquema_tipo_tela`, `jira_adicionar_itens_tipo_tela`, `jira_salvar_padrao_tipo_tela`, `jira_remover_itens_tipo_tela`, `jira_associar_esquema_tipo_tela` |
-| Jira (prioridades) | `jira_listar_prioridades`, `jira_listar_esquemas_prioridade`, `jira_listar_prioridades_esquema`, `jira_usos_esquema_prioridade`, `jira_listar_prioridades_mapear`, `jira_obter_tarefa` | `jira_criar_prioridade`, `jira_salvar_prioridade`, `jira_excluir_prioridade`, `jira_mover_prioridades`, `jira_salvar_padrao_prioridade`, `jira_criar_esquema_prioridade`, `jira_salvar_esquema_prioridade`, `jira_excluir_esquema_prioridade` |
-| Jira (configuracao de campo, API antiga) | `jira_listar_configs_campo`, `jira_listar_campos_config`, `jira_listar_esquemas_config`, `jira_listar_itens_config`, `jira_listar_config_projetos` | `jira_criar_config_campo`, `jira_salvar_config_campo`, `jira_excluir_config_campo`, `jira_salvar_campos_config`, `jira_criar_esquema_config`, `jira_salvar_esquema_config`, `jira_excluir_esquema_config`, `jira_adicionar_itens_config`, `jira_remover_itens_config`, `jira_associar_esquema_config` |
-| Jira (esquemas de campos, API em beta) | `jira_listar_esquemas_campos`, `jira_obter_esquema_campos`, `jira_listar_campos_esquema`, `jira_usos_esquema_campos` | `jira_criar_esquema_campos`, `jira_copiar_esquema_campos`, `jira_salvar_esquema_campos`, `jira_excluir_esquema_campos`, `jira_adicionar_campos_esquema`, `jira_remover_campos_esquema`, `jira_salvar_parametros_campos`, `jira_remover_parametros_campos`, `jira_associar_esquema_campos` |
-| Jira (notificacoes) | `jira_listar_esquemas_notif`, `jira_obter_esquema_notif`, `jira_obter_notif_projeto`, `jira_listar_notif_projetos`, `jira_listar_eventos`, `jira_listar_papeis` | `jira_criar_esquema_notif`, `jira_salvar_esquema_notif`, `jira_excluir_esquema_notif`, `jira_adicionar_notificacoes`, `jira_remover_notificacao`, `jira_associar_esquema_notif` |
-| JSM | `jsm_listar_service_desks`, `jsm_listar_request_types`, `jsm_obter_request_type`, `jsm_listar_campos_request_type`, `jsm_listar_grupos_request_type` | `jsm_criar_request_type`, `jsm_excluir_request_type` |
-| Forms (templates) | `forms_listar`, `forms_obter`, `forms_obter_do_request_type`, `forms_obter_dados_externos_rt` | `forms_criar`, `forms_salvar`, `forms_excluir` |
-| Forms (na issue) | `forms_listar_da_issue`, `forms_obter_da_issue`, `forms_obter_respostas`, `forms_obter_dados_externos`, `forms_listar_anexos` | `forms_criar_na_issue`, `forms_salvar_respostas`, `forms_enviar`, `forms_reabrir`, `forms_salvar_visibilidade`, `forms_copiar_entre_issues`, `forms_excluir_da_issue` |
+| `atlassian_conexao` | site, usuario autenticado e cloudId | nao |
+| `atlassian_ler` | GET em qualquer endpoint e os POST que so consultam (busca JQL, contagem, leituras em lote) | nao |
+| `atlassian_escrever` | POST, PUT, PATCH | sim |
+| `atlassian_excluir` | DELETE | sim |
 
-`atlassian_get` e `atlassian_requisicao` cobrem qualquer endpoint sem ferramenta
-propria. So aceitam o site configurado e `api.atlassian.com`: o token nunca vai
-para outro host.
+- **intencao:** as tres genericas exigem uma frase em portugues dizendo o que a
+  chamada faz. E o que aparece no transcript e no pedido de confirmacao.
+- **leitura:** `atlassian_ler` segue a paginacao da API sozinha (`limite`, com
+  `continuar` para o resto), filtra por igualdade (`filtro`), recorta a resposta
+  (`manter`), le varios caminhos numa chamada e recusa resposta grande demais com a
+  orientacao de pedir menos.
+- **host:** so o site configurado e `api.atlassian.com`; o token nunca vai para
+  outro host.
+
+O Claude Code casa permissao de ferramenta MCP so pelo nome. Para nao confirmar
+leituras, libere as duas de leitura no `settings.json` e mantenha a confirmacao nas
+de escrita e exclusao:
+
+```json
+{"permissions": {"allow": ["mcp__plugin_atlassian-admin_api__atlassian_ler",
+                           "mcp__plugin_atlassian-admin_api__atlassian_conexao"]}}
+```
 
 ## Skills
 
-| Skill | Ferramentas | Conteudo |
-|---|---|---|
-| `atlassian-admin:forms-design` | `forms_obter`, `forms_obter_do_request_type`, `forms_obter_da_issue`, `forms_criar`, `forms_salvar` | tipos de pergunta, validacao, opcoes, campos do Jira, Assets e conexoes de dados, secoes, condicoes, layout (avisos, titulos, colunas, aviso condicional), publicacao, traducao, fluxo seguro de edicao |
-| `atlassian-admin:jira-telas` | `jira_listar_esquemas_tela`, `jira_criar_esquema_tela`, `jira_salvar_esquema_tela`, `jira_listar_esquemas_tipo_tela`, `jira_listar_itens_tipo_tela`, `jira_listar_tipo_tela_projetos`, `jira_criar_esquema_tipo_tela`, `jira_adicionar_itens_tipo_tela`, `jira_salvar_padrao_tipo_tela`, `jira_remover_itens_tipo_tela`, `jira_associar_esquema_tipo_tela`, `jira_mover_campo_aba` | cadeia projeto, esquema por tipo de issue, esquema de tela, tela, abas e campos; qual tela o projeto mostra; quem usa cada tela e esquema; payloads de telas e itens (default, null); ordem de abas e campos; restricoes de exclusao; fluxo seguro de edicao |
-| `atlassian-admin:jira-prioridades` | `jira_criar_prioridade`, `jira_excluir_prioridade`, `jira_listar_esquemas_prioridade`, `jira_listar_prioridades_mapear`, `jira_criar_esquema_prioridade`, `jira_salvar_esquema_prioridade` | prioridade global e ordem, esquema com subconjunto e padrao, esquema padrao do site; quem usa cada esquema e o esquema de um projeto; icone por avatarId; mapeamentos in/out para migrar issues; fluxo seguro de alteracao, mover projeto de esquema, exclusao |
-| `atlassian-admin:jira-config-campos` | `jira_listar_configs_campo`, `jira_listar_campos_config`, `jira_salvar_campos_config`, `jira_listar_esquemas_config`, `jira_listar_itens_config`, `jira_listar_config_projetos`, `jira_adicionar_itens_config`, `jira_remover_itens_config`, `jira_associar_esquema_config` | API antiga (ativa na maioria dos sites): cadeia projeto, esquema, item por tipo de issue, configuracao e itens de campo; como um campo se comporta num projeto; payloads de itens; ocultar apaga obrigatorio e descricao; fluxo seguro (copiar configuracao compartilhada, conferir tela de criacao) |
-| `atlassian-admin:jira-esquemas-campos` | `jira_listar_esquemas_campos`, `jira_listar_campos_esquema`, `jira_adicionar_campos_esquema`, `jira_remover_campos_esquema`, `jira_salvar_parametros_campos`, `jira_remover_parametros_campos`, `jira_associar_esquema_campos` | API nova (beta) que substitui configuracao de campo; campos do projeto, obrigatorio, descricao e renderizador, excecoes e restricao por tipo de issue; payloads em lote e resultados parciais (207); esquema de um projeto; fluxo seguro (copiar esquema compartilhado, conferir tela de criacao) |
-| `atlassian-admin:jira-notificacoes` | `jira_listar_esquemas_notif`, `jira_obter_esquema_notif`, `jira_obter_notif_projeto`, `jira_criar_esquema_notif`, `jira_adicionar_notificacoes`, `jira_remover_notificacao`, `jira_associar_esquema_notif` | evento -> destinatarios; tipos de destinatario e o parameter de cada um (accountId, nome do grupo, papel, campo); onde achar os ids; payload de criar e adicionar; copiar esquema; fluxo seguro (esquema compartilhado, confirmar quem passa a receber) |
-| `atlassian-admin:forms-respostas` | `forms_obter_da_issue`, `forms_salvar_respostas`, `forms_obter_dados_externos`, `forms_obter_dados_externos_rt` | resposta por tipo de pergunta, status e visibilidade, preencher e enviar, dados externos, rotulos de conexao de dados |
+As instrucoes do servidor dizem qual skill carregar para cada prefixo de caminho.
+
+| Skill | Area |
+|---|---|
+| `atlassian-admin:atlassian-chamadas` | uso das ferramentas: intencao, paginacao, filtro, manter, varios caminhos, teto de tamanho, status das escritas, tarefas assincronas, erros |
+| `atlassian-admin:jira-issues` | busca e contagem JQL, issue, comentarios, historico, projetos, campos, tipos de issue, usuarios e grupos |
+| `atlassian-admin:jira-status-workflows` | status, workflows, esquemas de workflow e quem usa cada um |
+| `atlassian-admin:jira-telas` | telas, abas, campos da aba, esquemas de tela e esquemas de tela por tipo de issue; qual tela o projeto mostra |
+| `atlassian-admin:jira-prioridades` | prioridades, esquemas de prioridade, mapeamentos in/out, tarefas assincronas |
+| `atlassian-admin:jira-config-campos` | configuracao de campo e esquema de configuracao de campo (API antiga) |
+| `atlassian-admin:jira-esquemas-campos` | esquemas de campos (API nova, beta), lotes com resultado parcial (207) |
+| `atlassian-admin:jira-notificacoes` | esquemas de notificacao, eventos, destinatarios e papeis de projeto |
+| `atlassian-admin:jsm-request-types` | service desks, request types, campos, grupos, filas e SLAs |
+| `atlassian-admin:forms-design` | templates de formulario: JSON de design, publicacao no portal, formulario do request type |
+| `atlassian-admin:forms-respostas` | formularios anexados a issues: respostas, status, visibilidade, dados externos, anexos |
