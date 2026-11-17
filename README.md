@@ -31,42 +31,51 @@ ambiente sobrevive as atualizacoes.
 
 O servidor precisa da URL do site, do e-mail da conta administradora e de um
 [API token](https://id.atlassian.com/manage-profile/security/api-tokens). O metodo
-padrao, que funciona igual no Claude Code CLI e na aba Code do Claude Desktop, e um
-arquivo no seu usuario:
+padrao e a tela de sites, que funciona igual no Claude Code CLI e na aba Code do
+Claude Desktop. Numa sessao, digite:
 
-```bash
-mkdir -p ~/.config/atlassian-admin
-cat > ~/.config/atlassian-admin/.env <<'ENV'
-JIRA_URL=https://empresa.atlassian.net
-JIRA_EMAIL=admin@empresa.com
-JIRA_TOKEN=cole-o-token-aqui
-ENV
-chmod 600 ~/.config/atlassian-admin/.env
+```text
+/atlassian-admin:sites
 ```
 
-Troque os tres valores (URL sem barra no final) e abra uma sessao nova. O arquivo
-fica fora do repositorio e da copia instalada: nao vai para o git, vale para
-qualquer forma de instalacao e sobrevive as atualizacoes do plugin.
+Ou peca "abre a tela de sites". O Claude sobe uma pagina local, so em 127.0.0.1, e
+abre no navegador. Nela voce:
 
-Conferir: `claude mcp list` deve mostrar `plugin:atlassian-admin:api ... Connected`.
-Sem credencial o servidor nao sobe: o conector `api` aparece como falho, e o log
-dele diz o que falta e o caminho do arquivo. Credencial errada (token vencido) so
-aparece ao usar uma ferramenta; `atlassian_conexao` confere a conexao e mostra em
-qual site e com qual conta o plugin esta.
+- **cadastra** cada site como um perfil (nome, URL e e-mail); o token vai direto
+  para o Keychain e nunca volta para a pagina nem passa pelo chat;
+- **testa** a conexao e ve se a conta e admin do Jira;
+- **troca** o site em uso com "Usar este". A troca vale na proxima chamada do
+  plugin, sem reiniciar a sessao;
+- **importa** o arquivo `~/.config/atlassian-admin/.env` antigo como perfil.
+
+A pagina fecha pelo botao "Fechar tela" ou apos 30 minutos sem uso. Os perfis ficam
+em `~/.config/atlassian-admin/sites.json` (permissao 600, sem token).
+
+Sem abrir o Claude (macOS): de dois cliques em `Sites Atlassian.app`, na raiz do
+repositorio clonado. Ele abre a mesma tela com o codigo do repositorio (precisa do
+`uv`; na primeira vez ele monta a `.venv` e demora alguns segundos) e grava nos mesmos
+perfis e no mesmo Keychain do plugin instalado. Baixado como ZIP pelo navegador, o
+macOS bloqueia o app por nao ser assinado: abra com botao direito > Abrir, ou prefira
+`git clone`. O app nao tem icone no Dock: fecha pelo botao "Fechar tela".
+Se nao abrir, o motivo fica em `~/Library/Logs/atlassian-admin-sites.log`.
+
+Conferir: `atlassian_conexao` mostra o site em uso, de onde vieram as credenciais e
+a conta. Sem nenhum site, o servidor sobe mesmo assim e cada ferramenta responde
+explicando como cadastrar. Depois de trocar de site no meio de uma conversa, as
+respostas de escrita e exclusao dizem em qual site gravaram.
 
 A aba Chat do Claude (web e Desktop) nao roda servidor MCP local: la o plugin so
-carrega a skill. Veja a [tabela de componentes por app](https://claude.com/docs/plugins/platform-support).
+carrega as skills. Veja a [tabela de componentes por app](https://claude.com/docs/plugins/platform-support).
 
 ### Outras fontes
 
-O servidor usa o primeiro valor preenchido, nesta ordem. Na pratica, use so o
-arquivo acima; as outras existem para casos especificos:
+O servidor usa a primeira fonte completa, nesta ordem:
 
 | Ordem | Fonte | Quando usar |
 |---|---|---|
-| 1 | Opcoes do plugin, via `/plugin configure atlassian-admin@atlassian-admin` (token no Keychain) | So no terminal do Claude Code; util para apontar uma instalacao para outro site, porque vence o arquivo |
-| 2 | `.env` na raiz do repositorio | Desenvolvimento e testes (secao [Desenvolver](#desenvolver)) |
-| 3 | `~/.config/atlassian-admin/.env` | **Padrao** |
+| 1 | Opcoes do plugin, via `/plugin configure atlassian-admin@atlassian-admin` (token no Keychain), e o `.env` na raiz do repositorio | Terminal do Claude Code, ou desenvolvimento e testes (secao [Desenvolver](#desenvolver)). Vence os perfis: a tela avisa |
+| 2 | Perfil ativo da tela de sites | **Padrao** |
+| 3 | `~/.config/atlassian-admin/.env`, com `JIRA_URL`, `JIRA_EMAIL` e `JIRA_TOKEN` | Metodo anterior; continua valendo sem perfil |
 
 ## Atualizar
 

@@ -117,6 +117,17 @@ class TestManifesto(unittest.TestCase):
         """Um .mcp.json na raiz tambem viraria servidor de projeto e duplicaria o do plugin."""
         self.assertFalse((RAIZ / ".mcp.json").exists())
 
+    def test_app_da_tela_de_sites(self):
+        """Sites Atlassian.app: duplo clique no Finder abre a tela com o codigo do repositorio."""
+        import os
+        import plistlib
+        conteudo = RAIZ / "Sites Atlassian.app" / "Contents"
+        info = plistlib.loads((conteudo / "Info.plist").read_bytes())
+        self.assertEqual(info["CFBundleShortVersionString"], MANIFESTO["version"])
+        executavel = conteudo / "MacOS" / info["CFBundleExecutable"]
+        self.assertTrue(os.access(executavel, os.X_OK), "o executavel do app perdeu o bit de execucao")
+        self.assertIn("python -m atlassian_mcp_for_admins.tela", executavel.read_text())
+
 
 class TestFerramentas(unittest.TestCase):
     def test_conexao_e_tres_genericas_por_risco(self):
@@ -127,19 +138,22 @@ class TestFerramentas(unittest.TestCase):
 
 class TestIndependenteDeSite(unittest.TestCase):
     def test_site_configurado_nao_aparece_no_repositorio(self):
-        """O plugin roda em varios sites: nada versionado pode citar o site em uso."""
+        """O plugin roda em varios sites: nada versionado pode citar o site em uso nem os dos perfis."""
         import subprocess
         from urllib.parse import urlparse
 
-        from atlassian_mcp_for_admins import config
-        host = urlparse(config.URL).hostname
-        if not host:
+        from atlassian_mcp_for_admins import config, perfis
+        urls = {config.credenciais()["url"]} | {p["url"] for p in perfis.carregar()["sites"].values()}
+        hosts = {urlparse(u).hostname for u in urls if u} - {None}
+        if not hosts:
             self.skipTest("sem site configurado")
-        subdominio = host.split(".")[0].lower()
-        arquivos = subprocess.run(["git", "ls-files"], cwd=RAIZ, capture_output=True, text=True).stdout.split()
-        citam = [a for a in arquivos if a != "uv.lock" and (RAIZ / a).is_file()
-                 and subdominio in (RAIZ / a).read_text(encoding="utf-8", errors="ignore").lower()]
-        self.assertEqual(citam, [], f"arquivos citam o site {host}")
+        arquivos = [a for a in subprocess.run(["git", "ls-files"], cwd=RAIZ, capture_output=True,
+                                              text=True).stdout.split() if a != "uv.lock" and (RAIZ / a).is_file()]
+        for host in hosts:
+            subdominio = host.split(".")[0].lower()
+            citam = [a for a in arquivos
+                     if subdominio in (RAIZ / a).read_text(encoding="utf-8", errors="ignore").lower()]
+            self.assertEqual(citam, [], f"arquivos citam o site {host}")
 
 
 FERRAMENTAS_POR_METODO = {"GET": "atlassian_ler", "POST": "atlassian_escrever", "PUT": "atlassian_escrever",
@@ -163,8 +177,13 @@ def endpoints(texto: str) -> list:
     return saida
 
 
-def skills() -> list:
-    return sorted(p for p in PASTA_SKILLS.iterdir() if (p / "SKILL.md").is_file())
+# Skills que nao sao de uma area da API (sem tabela de endpoints).
+SKILLS_SEM_API = {"sites"}
+
+
+def skills(com_api: bool = True) -> list:
+    return sorted(p for p in PASTA_SKILLS.iterdir() if (p / "SKILL.md").is_file()
+                  and (not com_api or p.name not in SKILLS_SEM_API))
 
 
 class TestSkills(unittest.TestCase):
@@ -176,7 +195,7 @@ class TestSkills(unittest.TestCase):
                 self.assertIn(f"{PLUGIN}:{skill}", f.__doc__)
 
     def test_frontmatter_de_toda_skill(self):
-        for pasta in skills():
+        for pasta in skills(com_api=False):
             meta = frontmatter(pasta / "SKILL.md")
             self.assertEqual(meta["name"].strip(), pasta.name)
             self.assertGreater(len(meta["description"].strip()), 80, pasta.name)
@@ -184,7 +203,7 @@ class TestSkills(unittest.TestCase):
     def test_toda_skill_esta_nas_instrucoes_do_servidor(self):
         from atlassian_mcp_for_admins.servidor import INSTRUCOES
         self.assertLess(len(INSTRUCOES), 4096)
-        for pasta in skills():
+        for pasta in skills(com_api=False):
             self.assertIn(pasta.name, INSTRUCOES)
 
     def test_tabela_de_endpoints(self):
@@ -205,9 +224,9 @@ class TestSkills(unittest.TestCase):
                 self.assertIn(paginacao, PAGINACOES, rotulo)
 
     def test_skills_citam_so_ferramentas_existentes(self):
-        nomes = {f.__name__ for f in todas()}
+        nomes = {f.__name__ for f in todas()} | {"atlassian_mcp_for_admins"}  # o pacote, citado na skill sites
         padrao = re.compile(r"\b(?:jira|jsm|forms|atlassian)_[a-z_]+")
-        for pasta in skills():
+        for pasta in skills(com_api=False):
             citadas = set(padrao.findall((pasta / "SKILL.md").read_text(encoding="utf-8")))
             self.assertLessEqual(citadas, nomes, pasta.name)
 

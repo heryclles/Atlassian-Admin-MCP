@@ -36,16 +36,21 @@ Claude le.
 .claude-plugin/
   plugin.json         manifesto: userConfig (credenciais), servidor MCP "api", skills
   marketplace.json    marketplace "atlassian-admin" com o proprio repo como plugin
+Sites Atlassian.app       app de duplo clique (macOS) que abre a tela de sites com o codigo do
+                          repositorio; versao do Info.plist igual a do plugin.json
 skills/<skill>/SKILL.md   uma skill por area da API (atlassian-chamadas, jira-telas, forms-design...)
 src/atlassian_mcp_for_admins/
-  config.py           credenciais: env do plugin (userConfig) e, se vazio, .env; sem projeto fixo
+  config.py           credenciais relidas a cada chamada: ambiente/userConfig e .env do
+                      repositorio, perfil ativo, ~/.config/atlassian-admin/.env
+  perfis.py           perfis de site (sites.json, token no cofre via keyring)
+  tela.py             tela local de sites (http.server em 127.0.0.1, aberta pela skill sites)
   nucleo/http.py      ClienteHttp: auth, retry 429/5xx, erros legiveis, ERROS_PREVISTOS,
                       paginar (detecta o estilo), trava de host, troca de {cloudId},
                       dicas de 404 sem corpo, cliente() (singleton do site)
   ferramentas/        camada MCP: geral.py com as quatro ferramentas e CONSULTAS_POST;
                       _comum.py com leitura/escrita, limpar, usa_skill
   servidor.py         INSTRUCOES (mapa prefixo de caminho -> skill), registra e roda em stdio
-tests/                test_http.py, test_geral.py, test_plugin.py, test_servidor.py (sem rede),
+tests/                test_http.py, test_geral.py, test_plugin.py, test_servidor.py, test_tela.py (sem rede),
                       ao_vivo.py (leituras no site real), mcp_stdio.py (protocolo)
 ```
 
@@ -74,7 +79,8 @@ com este cabecalho exato (`test_plugin.py` confere):
   `INSTRUCOES` (`test_plugin.py` exige toda skill nas instrucoes, que tem limite de
   4096 caracteres).
 - `atlassian-chamadas` e a skill das proprias ferramentas; as tres genericas a citam
-  por `@usa_skill`.
+  por `@usa_skill`. `sites` abre a tela de sites: nao e area da API, fica em
+  `SKILLS_SEM_API` de `test_plugin.py` (sem tabela), mas tambem entra em `INSTRUCOES`.
 
 | Produto | URL base | Situacao |
 |---|---|---|
@@ -121,26 +127,37 @@ Host novo fora do site e de `api.atlassian.com` exige mudar `montar_url`.
   --frozen --quiet`, e o ambiente fica em `${CLAUDE_PLUGIN_DATA}/venv`, que
   sobrevive a atualizacoes. Por isso o `uv.lock` e versionado e o uv precisa estar
   no PATH. Primeira subida monta o ambiente (segundos); as seguintes reaproveitam.
-- Atualizar: commit e push, aumentar a versao do `plugin.json` (e do `pyproject.toml`),
+- Atualizar: commit e push, aumentar a versao do `plugin.json` (e do `pyproject.toml` e do Info.plist do app),
   `claude plugin marketplace update atlassian-admin` e
   `claude plugin update atlassian-admin@atlassian-admin`. Vale na proxima sessao.
 - Nao ha `.mcp.json` na raiz: ele viraria servidor de projeto e duplicaria o do plugin.
-- Credenciais: `config.py` le JIRA_URL/JIRA_EMAIL/JIRA_TOKEN e vale o primeiro valor
-  preenchido: (1) ambiente, que o Claude Code preenche com as opcoes `jira_url`,
-  `jira_email`, `jira_token` (sensitive, Keychain) do userConfig via
-  `/plugin configure atlassian-admin@atlassian-admin`, so no terminal; (2) `.env` da
-  raiz do repositorio (desenvolvimento ou clone carregado direto); (3)
-  `~/.config/atlassian-admin/.env` (`config.ARQUIVO_USUARIO`): o METODO PADRAO, o unico
-  que o README ensina primeiro, porque funciona igual no CLI e na aba Code do
-  Claude Desktop (que nao tem `/plugin configure`). Fica fora do repositorio e da
-  copia instalada e sobrevive a atualizacoes. As outras fontes sao casos especificos. userConfig vazio
-  chega como "" ou "${user_config.x}" e cai nos arquivos.
-  Obrigatorias, mas a obrigatoriedade fica no servidor: `servidor.main` valida na
-  subida e encerra com codigo 1, e o log mostra o caminho do arquivo padrao.
-  No manifesto elas ficam `required: false` e `default: ""`: com `required` e a
-  opcao vazia, o Claude Code nem tenta subir o servidor; sem `default`, o Cowork
-  ignora o servidor (ele nao pergunta userConfig). Um site por usuario da maquina.
-  Nunca passar o token por `--config` na linha de comando nem digita-lo pelo usuario.
+- Credenciais: `config.credenciais()` e chamada a cada ferramenta (por `nucleo.http.cliente()`,
+  que recria a sessao quando o site muda) e vale a primeira fonte COMPLETA (URL, e-mail e
+  token, nunca misturando fontes): (1) ambiente, que o Claude Code preenche com as opcoes
+  `jira_url`, `jira_email`, `jira_token` (sensitive, Keychain) do userConfig via
+  `/plugin configure atlassian-admin@atlassian-admin`, completado pelo `.env` da raiz do
+  repositorio (desenvolvimento); (2) perfil ativo da tela de sites (`perfis.py`): dados em
+  `~/.config/atlassian-admin/sites.json` (600, sem token) e token no cofre do sistema
+  pela biblioteca keyring, servico `atlassian-admin`, usuario = id do perfil. O METODO
+  PADRAO, o que o README ensina primeiro, porque funciona igual no CLI e na aba Code do
+  Claude Desktop e troca de site sem reiniciar; (3) `~/.config/atlassian-admin/.env`
+  (`config.ARQUIVO_USUARIO`), o metodo anterior. userConfig vazio chega como "" ou
+  "${user_config.x}" e cai nas outras fontes.
+- Sem credencial o servidor sobe mesmo assim (log de aviso) e cada ferramenta responde
+  com o RuntimeError que manda abrir a tela: cadastrar um site vale sem reiniciar. No
+  manifesto as opcoes ficam `required: false` e `default: ""`: com `required` e a opcao
+  vazia, o Claude Code nem tenta subir o servidor; sem `default`, o Cowork ignora o
+  servidor (ele nao pergunta userConfig).
+- Tela de sites (`tela.py`, skill `sites`): servidor stdlib so em 127.0.0.1, chave
+  aleatoria no fragmento da URL devolvida como cabecalho X-Chave, Host e Origin
+  conferidos, CSP sem recursos externos, token nunca devolvido a pagina, fecha sozinha
+  apos 30 minutos. A tela mostra o que o plugin instalado usa (`credenciais(com_repositorio=False)`)
+  e so avisa do `.env` do repositorio. A skill roda `uv run --project ${CLAUDE_PLUGIN_ROOT}` com
+  `UV_PROJECT_ENVIRONMENT=${CLAUDE_PLUGIN_DATA}/venv`: o Claude Code substitui essas
+  variaveis no texto de skill de plugin, mas elas nao existem no ambiente do Bash.
+- Trocar de site no meio da conversa: escrita e exclusao devolvem `site`, e
+  `atlassian_conexao` devolve `origem`. Nunca pedir o token no chat nem passa-lo por
+  linha de comando (`--config` incluso).
 - Aba Chat do Claude (web e Desktop) ignora servidor MCP local: la so a skill
   carrega. Tools no Chat exigiriam servidor remoto (http), fora do escopo atual.
 - Desenvolvimento: `uv sync` cria a `.venv` do repositorio; testes usam o `.env`
@@ -256,11 +273,15 @@ ficticios (`SUP`, `customfield_10000`, `https://empresa.atlassian.net`).
 - v0.9: esquemas de notificacao (ler, criar, renomear, excluir,
   adicionar e remover destinatarios, associar a projeto), eventos, papeis de
   projeto, skill jira-notificacoes.
-- v1.0 (atual): as 126 ferramentas especificas viram quatro (conexao e tres
+- v1.0: as 126 ferramentas especificas viram quatro (conexao e tres
   genericas por risco, com intencao obrigatoria, paginacao seguida pela ferramenta,
   filtro, manter, varios caminhos e teto de tamanho); o conhecimento de cada endpoint
   passa para as skills, uma por area, cada uma com a tabela de endpoints; skills
   novas atlassian-chamadas, jira-issues, jira-status-workflows e jsm-request-types.
+- v1.1 (atual): tela de sites (skill sites): perfis de site com token no Keychain,
+  testar conexao e admin, importar o .env antigo, troca de site sem reiniciar
+  (credenciais relidas a cada chamada), servidor sobe sem credencial, `site` nas
+  respostas de escrita e exclusao.
 - Proximos candidatos: contextos de campo customizado (opcoes, valor padrao),
   esquemas de tipo de issue, Assets (objetos, esquemas, AQL), criacao e edicao de
   issues, transicoes, Confluence. Cada um e uma skill nova (ex. assets-aql).

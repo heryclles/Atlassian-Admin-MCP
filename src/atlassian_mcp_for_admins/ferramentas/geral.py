@@ -10,6 +10,7 @@ import logging
 from typing import Any, Dict, List, Optional, Union
 from urllib.parse import urlparse
 
+from ..nucleo import http as nucleo_http
 from ..nucleo.http import ERROS_PREVISTOS, cliente
 from ._comum import escrita, leitura, limpar, usa_skill
 
@@ -152,7 +153,7 @@ def atlassian_escrever(intencao: str, metodo: str, caminho: str, corpo: Optional
     o usuario le no pedido de confirmacao (ex.: "Criar a aba Detalhes na tela 10000").
     metodo: POST, PUT ou PATCH. Para excluir use atlassian_excluir; para ler,
     atlassian_ler. caminho: mesmas regras de atlassian_ler. corpo: JSON enviado como esta.
-    Devolve {"http": status, "resposta": corpo}: 201 criou, 204 sem corpo, 207 lote
+    Devolve {"site", "http": status, "resposta": corpo}: site onde gravou, 201 criou, 204 sem corpo, 207 lote
     com resultado por item (confira cada um), 303 ja seguido ate a tarefa assincrona.
     """
     metodo = (metodo or "").upper()
@@ -160,8 +161,9 @@ def atlassian_escrever(intencao: str, metodo: str, caminho: str, corpo: Optional
         outra = "atlassian_excluir" if metodo == "DELETE" else "atlassian_ler"
         raise ValueError(f"metodo deve ser um de {sorted(METODOS_ESCRITA)}; para {metodo or 'ler'} use {outra}")
     _conferir_intencao(intencao, metodo, caminho)
-    status, resposta = cliente().requisitar(metodo, caminho, com_status=True, json=corpo, params=params)
-    return {"http": status, "resposta": limpar(resposta)}
+    http = cliente()
+    status, resposta = http.requisitar(metodo, caminho, com_status=True, json=corpo, params=params)
+    return {"site": http.url, "http": status, "resposta": limpar(resposta)}
 
 
 @escrita
@@ -174,20 +176,25 @@ def atlassian_excluir(intencao: str, caminho: str, corpo: Optional[Any] = None,
     o usuario le no pedido de confirmacao (ex.: "Excluir a aba vazia 10200 da tela 10000").
     caminho: mesmas regras de atlassian_ler. corpo: alguns DELETE em lote recebem JSON
     (ex. /rest/api/3/config/fieldschemes/fields).
-    Devolve {"http": status, "resposta": corpo}; exclusao assincrona traz a tarefa.
+    Devolve {"site", "http": status, "resposta": corpo}; exclusao assincrona traz a tarefa.
     """
     _conferir_intencao(intencao, "DELETE", caminho)
-    status, resposta = cliente().requisitar("DELETE", caminho, com_status=True, json=corpo, params=params)
-    return {"http": status, "resposta": limpar(resposta)}
+    http = cliente()
+    status, resposta = http.requisitar("DELETE", caminho, com_status=True, json=corpo, params=params)
+    return {"site": http.url, "http": status, "resposta": limpar(resposta)}
 
 
 @leitura
 def atlassian_conexao() -> dict:
-    """Mostra o site configurado, o usuario autenticado e o cloudId."""
+    """Mostra o site em uso, de onde vieram as credenciais, o usuario autenticado e o cloudId.
+
+    O site pode mudar no meio da conversa (tela de sites do plugin): confira antes de
+    escrever se o pedido envolve um site especifico.
+    """
     http = cliente()
     eu = http.get("/rest/api/3/myself")
-    return {"site": http.url, "usuario": eu.get("displayName"), "email": eu.get("emailAddress"),
-            "account_id": eu.get("accountId"), "cloud_id": http.cloud_id()}
+    return {"site": http.url, "origem": nucleo_http.origem, "usuario": eu.get("displayName"),
+            "email": eu.get("emailAddress"), "account_id": eu.get("accountId"), "cloud_id": http.cloud_id()}
 
 
 FERRAMENTAS = [atlassian_conexao, atlassian_ler, atlassian_escrever, atlassian_excluir]

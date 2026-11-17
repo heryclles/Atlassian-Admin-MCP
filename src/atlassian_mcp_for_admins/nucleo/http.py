@@ -352,15 +352,22 @@ def _montar(primeira: Any, rota: List[str], itens: list) -> Any:
     return dados
 
 
-# ------------------------------------------------------------- singleton
+# ------------------------------------------------------------- cliente do site
 _cliente: Optional[ClienteHttp] = None
+_chave: Optional[tuple] = None
+origem: Optional[str] = None  # de onde vieram as credenciais em uso (config.credenciais)
 
 
 def cliente() -> ClienteHttp:
-    """Cliente do site configurado (config.py), criado na primeira chamada."""
-    global _cliente
-    if _cliente is None:
-        from .. import config
-        config.validar()
-        _cliente = ClienteHttp(config.URL, config.EMAIL, config.TOKEN)
+    """Cliente do site configurado. As credenciais sao relidas a cada chamada: trocar o
+    perfil ativo (tela de sites) ou o .env vale na proxima chamada, sem reiniciar."""
+    global _cliente, _chave, origem
+    from .. import config
+    c = config.validar()
+    chave = (c["url"], c["email"], c["token"])
+    if _cliente is None or chave != _chave:
+        if _cliente is not None:
+            log.info("Site trocado: %s -> %s (%s)", _cliente.url, c["url"], c["origem"])
+        _cliente, _chave = ClienteHttp(*chave), chave
+    origem = c["origem"]
     return _cliente

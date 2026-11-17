@@ -1,0 +1,24 @@
+#!/bin/bash
+# Abre a tela de sites do plugin atlassian-admin com o codigo deste repositorio.
+# Os perfis e tokens sao os mesmos do plugin instalado (~/.config/atlassian-admin e Keychain).
+REPO="$(cd "$(dirname "$0")/../../.." && pwd)"
+LOG="$HOME/Library/Logs/atlassian-admin-sites.log"
+# Aberto pelo Finder, o PATH nao tem o que o shell do usuario configura
+export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+
+alerta() {
+  /usr/bin/osascript -e "display alert \"Sites Atlassian\" message \"$1\" as critical" >/dev/null 2>&1
+}
+
+if ! command -v uv >/dev/null 2>&1; then
+  alerta "O uv nao foi encontrado. Instale com: curl -LsSf https://astral.sh/uv/install.sh | sh"
+  exit 1
+fi
+
+mkdir -p "$(dirname "$LOG")"
+uv run --project "$REPO" --frozen --quiet python -m atlassian_mcp_for_admins.tela >"$LOG" 2>&1
+codigo=$?
+if [ $codigo -ne 0 ]; then
+  alerta "A tela nao abriu (codigo $codigo). Detalhes em $LOG"
+fi
+exit $codigo

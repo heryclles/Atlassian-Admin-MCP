@@ -120,13 +120,14 @@ class TestEscreverExcluir(Base):
     def test_escrever_envelope_com_status(self):
         s = self.usar([Resposta({"id": "10", "self": "x"}, 201)])
         r = geral.atlassian_escrever(INTENCAO, "post", "/rest/api/3/screens", corpo={"name": "Tela"})
-        self.assertEqual(r, {"http": 201, "resposta": {"id": "10"}})
+        self.assertEqual(r, {"site": "https://site.atlassian.net", "http": 201, "resposta": {"id": "10"}})
         self.assertEqual(s.chamadas[0][0], "POST")
         self.assertEqual(s.chamadas[0][3], {"name": "Tela"})
 
     def test_escrever_sem_corpo_na_resposta(self):
         self.usar([Resposta(None, 204)])
-        self.assertEqual(geral.atlassian_escrever(INTENCAO, "PUT", "/x", corpo={}), {"http": 204, "resposta": None})
+        self.assertEqual(geral.atlassian_escrever(INTENCAO, "PUT", "/x", corpo={}),
+                         {"site": "https://site.atlassian.net", "http": 204, "resposta": None})
 
     def test_escrever_recusa_get_e_delete(self):
         s = self.usar([])
